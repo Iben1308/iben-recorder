@@ -1,0 +1,22 @@
+plugins { id 'com.android.application' }
+
+android {
+    namespace 'ua.iben.recorder'
+    compileSdk 35
+    defaultConfig {
+        applicationId 'ua.iben.recorder'
+        minSdk 29
+        targetSdk 29
+        versionCode 1
+        versionName '0.1.0-prototype'
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+    buildTypes {
+        release { minifyEnabled false }
+    }
+}
+
+// No Play Services, Firebase, ads, analytics or third-party runtime dependencies.
