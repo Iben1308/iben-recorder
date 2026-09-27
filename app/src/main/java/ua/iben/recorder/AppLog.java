@@ -12,7 +12,7 @@ import java.util.Locale;
 
 final class AppLog {
     static synchronized void write(Context context, String text) {
-        Log.i("J7Recorder", text);
+        Log.i("IbenRecorder", text);
         try {
             File file = new File(context.getFilesDir(), "events.log");
             if (file.length() > 65536) {
@@ -25,7 +25,7 @@ final class AppLog {
             try (FileOutputStream out = new FileOutputStream(file, true)) {
                 out.write(line.getBytes(StandardCharsets.UTF_8));
             }
-        } catch (Exception e) { Log.w("J7Recorder", "Log write failed", e); }
+        } catch (Exception e) { Log.w("IbenRecorder", "Log write failed", e); }
     }
     static synchronized String read(Context context) {
         try {

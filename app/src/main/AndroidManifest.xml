@@ -8,7 +8,7 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-feature android:name="android.hardware.microphone" android:required="true" />
     <application
-        android:label="J7 Recorder"
+        android:label="Iben Recorder"
         android:icon="@drawable/ic_mic"
         android:theme="@style/AppTheme"
         android:allowBackup="false"

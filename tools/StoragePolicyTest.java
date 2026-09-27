@@ -26,6 +26,11 @@ public final class StoragePolicyTest {
         check(!p.enoughSpace && p.deleteIds.isEmpty(), "Oversized segment cannot erase archive");
         p = StoragePolicy.plan(files, 90 * M, 20 * M, 100 * M, 1000 * M, true);
         check(!p.enoughSpace && p.deleteIds.isEmpty(), "Never remove active staging to fit quota");
+        p = StoragePolicy.plan(files, 60 * M + 10 * M, 70 * M, 200 * M, 1000 * M, true);
+        check(p.enoughSpace && p.deleteIds.equals(Collections.singletonList("old")),
+                "Current and finalizing files stay protected together; only closed archive is evicted");
+        p = StoragePolicy.plan(files, 150 * M, 70 * M, 200 * M, 1000 * M, true);
+        check(!p.enoughSpace && p.deleteIds.isEmpty(), "Finalizer backlog cannot trigger destructive futile eviction");
         p = StoragePolicy.plan(Collections.emptyList(), 0, 20 * M, 100 * M, 275 * M, true);
         check(!p.enoughSpace, "Fail if disk reserve cannot be met");
         check(StoragePolicy.segmentBudget(60, 128) > 57600000L, "AAC estimate includes container headroom");

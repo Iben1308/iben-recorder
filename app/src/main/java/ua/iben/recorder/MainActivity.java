@@ -7,6 +7,7 @@ import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.content.res.Configuration;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.os.Build;
@@ -16,11 +17,14 @@ import android.provider.Settings;
 import android.text.InputType;
 import android.view.View;
 import android.widget.ArrayAdapter;
+import android.widget.AdapterView;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.Spinner;
+import android.widget.SeekBar;
+import android.widget.ProgressBar;
 import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -44,10 +48,19 @@ public final class MainActivity extends Activity {
     private Button start;
     private Button stop;
     private LinearLayout root;
+    private int foreground;
+    private boolean dark;
+    private TextView gainLabel;
+    private TextView levelLabel;
+    private ProgressBar level;
 
     @Override public void onCreate(Bundle state) {
-        super.onCreate(state);
         config = new Config(this);
+        dark = config.theme() == 2 || (config.theme() == 0
+                && (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES);
+        setTheme(dark ? R.style.AppTheme_Dark : R.style.AppTheme_Light);
+        super.onCreate(state);
+        foreground = Color.parseColor(dark ? "#E5ECE9" : "#212F2D");
         ScrollView scroll = new ScrollView(this);
         root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
@@ -55,20 +68,40 @@ public final class MainActivity extends Activity {
         scroll.addView(root);
         setContentView(scroll);
 
-        TextView title = text("J7 Recorder", 28);
+        TextView title = text("Iben Recorder", 28);
         title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        text("Аудіореєстратор · прототип 0.1", 14);
+        text("Безперервний аудіозапис · 0.2", 14);
         space(18);
         status = text("Запис вимкнено", 21);
-        status.setTextColor(Color.rgb(19, 111, 99));
+        status.setTextColor(Color.parseColor(dark ? "#76D8C7" : "#136F63"));
         details = text("", 14);
         space(12);
         start = button("Почати / відновити запис", this::startPressed);
         stop = button("Зупинити й зберегти фрагмент", () -> {
             config.wanted(false);
+            config.status("Завершення й збереження запису…", 0);
             startForegroundService(new Intent(this, RecorderService.class).setAction(RecorderService.STOP));
             refresh();
         });
+
+        space(16);
+        gainLabel = text("Підсилення: +" + config.gainDb() + " дБ", 19);
+        SeekBar gain = new SeekBar(this);
+        gain.setMax(24); gain.setProgress(config.gainDb());
+        gain.setContentDescription("Підсилення запису від 0 до 24 децибелів");
+        root.addView(gain);
+        gain.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override public void onProgressChanged(SeekBar bar, int value, boolean fromUser) {
+                gainLabel.setText("Підсилення: +" + value + " дБ");
+                if (fromUser) config.gainDb(value);
+            }
+            @Override public void onStartTrackingTouch(SeekBar bar) { }
+            @Override public void onStopTrackingTouch(SeekBar bar) { }
+        });
+        text("Можна змінювати під час запису. Почніть із +6 дБ. Підсилюється також фоновий шум; обмежувач пом’якшує надто гучні піки.", 13);
+        level = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        level.setMax(100); level.setContentDescription("Рівень звуку після підсилення"); root.addView(level);
+        levelLabel = text("Рівень звуку: —", 13);
 
         space(20);
         text("Налаштування запису", 19).setTypeface(Typeface.DEFAULT, Typeface.BOLD);
@@ -108,7 +141,16 @@ public final class MainActivity extends Activity {
             new AlertDialog.Builder(this).setTitle("Журнал").setView(box).setPositiveButton("Закрити", null).show();
         });
         space(12);
-        text("Між фрагментами можлива коротка пауза. Перед автономною роботою перевірте запис і синхронізацію протягом 72 годин.", 13);
+        text("Тема", 19).setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        String[] themeOptions = {"Як у системі", "Світла", "Темна"};
+        Spinner theme = spinner(themeOptions, themeOptions[Math.max(0, Math.min(2, config.theme()))]);
+        theme.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                if (position != config.theme()) { config.theme(position); recreate(); }
+            }
+            @Override public void onNothingSelected(AdapterView<?> parent) { }
+        });
+        text("Тему можна змінювати під час запису.", 13);
         if (Build.VERSION.SDK_INT != 29)
             text("Цей прототип працює лише на Android 10. На цьому пристрої запис вимкнено.", 15).setTextColor(Color.RED);
     }
@@ -157,24 +199,29 @@ public final class MainActivity extends Activity {
     private void refresh() {
         boolean wanted = config.wanted();
         long heartbeat = config.prefs.getLong("heartbeat", 0);
-        boolean stale = wanted && System.currentTimeMillis() - heartbeat > 90000L;
+        boolean active = config.prefs.getBoolean("engine_active", false);
+        boolean stale = (wanted || active) && System.currentTimeMillis() - heartbeat > 90000L;
         status.setText(stale ? "Немає свіжого стану — перевірте запис" : config.prefs.getString("status", "Запис вимкнено"));
-        long began = config.prefs.getLong("segment_start", 0);
-        long seconds = began == 0 || stale || !wanted ? 0 : Math.max(0, (System.currentTimeMillis() - began) / 1000L);
+        long seconds = !active || stale ? 0 : config.prefs.getLong("segment_ms", 0) / 1000L;
         long used = config.prefs.getLong("used_bytes", 0);
         long free = config.prefs.getLong("free_bytes", 0);
         details.setText(String.format(Locale.ROOT,
-                "Поточний фрагмент: %02d:%02d:%02d\nЗаписи: %.0f / %d МіБ · вільно: %.0f МіБ",
+                "Поточний фрагмент: %02d:%02d:%02d\nЗаписи: %.0f / %d МіБ · вільно: %.0f МіБ\nЗавершується файлів: %d",
                 seconds / 3600L, (seconds / 60L) % 60L, seconds % 60L,
-                used / (double) StoragePolicy.MIB, config.quotaMiB(), free / (double) StoragePolicy.MIB));
-        for (View view : new View[]{minutes, quota, bitrate, sampling, cleanup, boot, save}) view.setEnabled(!wanted);
-        start.setEnabled(Build.VERSION.SDK_INT == 29);
+                used / (double) StoragePolicy.MIB, config.quotaMiB(), free / (double) StoragePolicy.MIB,
+                active ? config.prefs.getInt("finishing", 0) : 0));
+        int peak = active && !stale ? config.prefs.getInt("peak", 0) : 0;
+        level.setProgress(peak);
+        levelLabel.setText(active && !stale ? "Рівень звуку: " + peak + "%"
+                + (config.prefs.getBoolean("limiting", false) ? " · обмеження піків" : "") : "Рівень звуку: —");
+        for (View view : new View[]{minutes, quota, bitrate, sampling, cleanup, boot, save}) view.setEnabled(!wanted && (!active || stale));
+        start.setEnabled(Build.VERSION.SDK_INT == 29 && (!active || stale));
         stop.setEnabled(wanted);
     }
 
     private TextView text(String value, int size) {
         TextView view = new TextView(this);
-        view.setText(value); view.setTextSize(size); view.setTextColor(Color.rgb(33, 47, 45));
+        view.setText(value); view.setTextSize(size); view.setTextColor(foreground);
         view.setPadding(0, dp(5), 0, dp(7)); root.addView(view);
         return view;
     }

@@ -5,8 +5,13 @@ classes_dir="$(mktemp -d)"
 trap 'rm -rf -- "$classes_dir"' EXIT
 java --module jdk.compiler/com.sun.tools.javac.Main --release 8 -d "$classes_dir" \
   "$project_dir/app/src/main/java/ua/iben/recorder/StoragePolicy.java" \
-  "$project_dir/tools/StoragePolicyTest.java"
+  "$project_dir/app/src/main/java/ua/iben/recorder/AudioGain.java" \
+  "$project_dir/app/src/main/java/ua/iben/recorder/RecordingNames.java" \
+  "$project_dir/app/src/main/java/ua/iben/recorder/SegmentTimeline.java" \
+  "$project_dir/tools/StoragePolicyTest.java" \
+  "$project_dir/tools/AudioCoreTest.java"
 java -cp "$classes_dir" ua.iben.recorder.StoragePolicyTest
+java -cp "$classes_dir" ua.iben.recorder.AudioCoreTest
 java --module jdk.compiler/com.sun.tools.javac.Main -d "$classes_dir" "$project_dir/tools/JavaSyntaxCheck.java"
 mapfile -t java_sources < <(find "$project_dir/app/src/main/java" -name '*.java' -type f)
 java -cp "$classes_dir" JavaSyntaxCheck "${java_sources[@]}"

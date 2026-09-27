@@ -6,162 +6,215 @@ import android.media.MediaScannerConnection;
 import android.os.Environment;
 import java.io.File;
 import java.io.IOException;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
-import java.util.TimeZone;
+import java.util.Map;
 import java.util.UUID;
 
-/** Android 10 only: private staging and public output live on the same primary volume. */
-final class RecordingFiles {
+/** Private staging and public output stay on the same primary volume (Android 10). */
+final class RecordingFiles implements AutoCloseable {
+    static final class Part {
+        final String id;
+        final long start;
+        final String zone;
+        final File file;
+        Part(String id, long start, String zone, File file) {
+            this.id = id; this.start = start; this.zone = zone; this.file = file;
+        }
+    }
     private final Context context;
     private final Config config;
     private final String owner;
+    private final RecordIndex index;
+    private final Object lock = new Object();
     final File pendingDir;
     final File readyDir;
+    private final File legacyDir;
 
     RecordingFiles(Context context, Config config) throws IOException {
-        this.context = context;
-        this.config = config;
-        this.owner = config.owner();
+        this.context = context; this.config = config; owner = config.owner();
         File external = context.getExternalFilesDir(null);
         if (external == null) throw new IOException("Сховище телефона недоступне");
-        pendingDir = new File(external, "pending");
+        pendingDir = new File(external, ".temp");
+        legacyDir = new File(external, "pending");
         readyDir = publicDirectory();
-        mkdir(pendingDir);
-        mkdir(readyDir);
+        mkdir(pendingDir); mkdir(readyDir);
+        File noMedia = new File(pendingDir, ".nomedia");
+        if (!noMedia.exists() && !noMedia.createNewFile()) throw new IOException("Не вдалося приховати робочу папку");
+        index = new RecordIndex(context);
     }
 
     @SuppressWarnings("deprecation")
     static File publicDirectory() {
+        // Preserve the user's existing Nextcloud auto-upload folder when upgrading.
         return new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC), "J7Recorder");
     }
-
     private static void mkdir(File directory) throws IOException {
-        if (!directory.isDirectory() && !directory.mkdirs())
-            throw new IOException("Не вдалося створити папку: " + directory);
+        if (!directory.isDirectory() && !directory.mkdirs()) throw new IOException("Не вдалося створити папку: " + directory);
+    }
+    private static boolean inside(File file, File directory) throws IOException {
+        return file.getCanonicalFile().getParentFile().equals(directory.getCanonicalFile());
+    }
+    private File temp(String id) throws IOException {
+        if (id == null || !id.matches("[0-9a-f-]{36}")) throw new IOException("Некоректний ідентифікатор запису");
+        File f = new File(pendingDir, id + ".part");
+        if (!inside(f, pendingDir)) throw new IOException("Сторонній робочий шлях");
+        return f;
+    }
+    private File published(String name) throws IOException {
+        if (!RecordingNames.validPublishedName(name)) throw new IOException("Некоректна назва запису");
+        File f = new File(readyDir, name);
+        if (!inside(f, readyDir)) throw new IOException("Сторонній шлях запису");
+        return f;
+    }
+    private boolean legacyOwned(File f, File directory) throws IOException {
+        return f.isFile() && StoragePolicy.ownedName(f.getName(), owner) && inside(f, directory);
     }
 
-    private boolean owned(File file, File directory) throws IOException {
-        return file.isFile() && StoragePolicy.ownedName(file.getName(), owner)
-                && file.getCanonicalFile().getParentFile().equals(directory.getCanonicalFile());
+    Part create(long start, String zone, long budget) throws IOException {
+        synchronized (lock) {
+            if (!ensureRoom(budget)) throw new IOException("Недостатньо місця для наступного фрагмента");
+            String id = UUID.randomUUID().toString();
+            File f = temp(id);
+            index.create(id, start, zone);
+            if (!f.createNewFile()) { index.remove(id); throw new IOException("Не вдалося створити робочий файл"); }
+            return new Part(id, start, zone, f);
+        }
     }
 
-    File newPart() throws IOException {
-        SimpleDateFormat date = new SimpleDateFormat("yyyyMMdd'T'HHmmss_SSS", Locale.ROOT);
-        date.setTimeZone(TimeZone.getTimeZone("UTC"));
-        File file = new File(pendingDir, "j7_" + owner + "_" + date.format(new Date())
-                + "_" + UUID.randomUUID().toString().substring(0, 8) + ".part");
-        if (!file.createNewFile()) throw new IOException("Конфлікт імені нового запису");
-        return file;
+    /** Caller has already stopped AND released the muxer. No media operation holds the quota lock. */
+    void finish(Part part) throws IOException {
+        long duration = duration(part.file);
+        if (duration <= 0) {
+            synchronized (lock) { index.state(part.id, RecordIndex.FAILED); }
+            throw new IOException("Фрагмент не має читабельного аудіо; залишено у .temp");
+        }
+        File target;
+        synchronized (lock) {
+            int duplicate = 0;
+            String name;
+            do {
+                name = RecordingNames.format(part.start, part.zone, duration, duplicate++);
+                target = published(name);
+            } while (target.exists() || index.nameReserved(name, part.id));
+            // Persist the target BEFORE rename, so a crash after rename is recoverable.
+            index.prepared(part.id, duration, name);
+            move(part.file, target);
+            index.state(part.id, RecordIndex.PUBLISHED);
+        }
+        scan(target);
+        AppLog.write(context, "Готовий файл: " + target.getName() + " (" + target.length() + " байтів)");
+    }
+    void failed(Part part) {
+        synchronized (lock) { index.state(part.id, RecordIndex.FAILED); }
     }
 
-    /** Recheck actual bytes after deletions: a failed unlink never counts as freed storage. */
-    boolean ensureRoom(long required) throws IOException {
-        Snapshot snapshot = snapshot();
-        StoragePolicy.Plan plan = StoragePolicy.plan(snapshot.closed, snapshot.pending,
-                required, config.quota(), readyDir.getUsableSpace(), config.deleteOldest());
-        if (!plan.enoughSpace) return false;
-        for (String path : plan.deleteIds) {
-            File file = new File(path);
-            boolean inOutput = owned(file, readyDir) && file.getName().endsWith(".m4a");
-            boolean failed = owned(file, pendingDir) && file.getName().endsWith(".failed");
-            if (!(inOutput || failed)) throw new IOException("Відхилено сторонній шлях видалення");
-            if (file.delete()) {
-                AppLog.write(context, "Ліміт пам’яті: видалено " + file.getName());
-                MediaScannerConnection.scanFile(context, new String[]{path}, null, null);
-            } else {
-                throw new IOException("Не вдалося видалити старий фрагмент");
+    /** Run only with all capture, writer and finalizer threads stopped. */
+    void recover() throws IOException {
+        for (RecordIndex.Entry e : index.all()) {
+            File source = temp(e.id);
+            if (e.state == RecordIndex.PUBLISHED) {
+                if (!published(e.finalName).exists()) index.remove(e.id);
+            } else if (e.state != RecordIndex.FAILED) {
+                if (e.state == RecordIndex.READY && !source.exists() && published(e.finalName).isFile()) {
+                    index.state(e.id, RecordIndex.PUBLISHED);
+                    scan(published(e.finalName));
+                } else if (source.exists()) {
+                    if (duration(source) > 0) finish(new Part(e.id, e.start, e.zone, source));
+                    else { index.state(e.id, RecordIndex.FAILED); AppLog.write(context, "Незавершений файл ізольовано у .temp"); }
+                } else index.remove(e.id);
+            } else if (!source.exists()) index.remove(e.id);
+        }
+        // v0.1 files keep their names: do not cause duplicate uploads by renaming an archive.
+        if (legacyDir.isDirectory()) {
+            File[] old = legacyDir.listFiles();
+            if (old == null) throw new IOException("Немає доступу до старої робочої папки");
+            for (File f : old) {
+                if (!legacyOwned(f, legacyDir) || !(f.getName().endsWith(".part") || f.getName().endsWith(".ready"))) continue;
+                String stem = f.getName().substring(0, f.getName().lastIndexOf('.'));
+                if (duration(f) > 0) { File target = new File(readyDir, stem + ".m4a"); move(f, target); scan(target); }
+                else move(f, new File(legacyDir, stem + ".failed"));
             }
         }
-        snapshot = snapshot();
-        return StoragePolicy.plan(snapshot.closed, snapshot.pending, required,
-                config.quota(), readyDir.getUsableSpace(), false).enoughSpace;
     }
 
+    boolean ensureRoom(long required) throws IOException {
+        synchronized (lock) {
+            Snapshot s = snapshot();
+            StoragePolicy.Plan plan = StoragePolicy.plan(s.closed, s.pending, required,
+                    config.quota(), readyDir.getUsableSpace(), config.deleteOldest());
+            if (!plan.enoughSpace) return false;
+            for (String path : plan.deleteIds) {
+                // Candidates come only from the ledger or the previous installation's owner prefix.
+                File f = new File(path);
+                if (!f.delete()) throw new IOException("Не вдалося видалити старий фрагмент");
+                String id = s.rowIds.get(path);
+                if (id != null) index.remove(id);
+                scan(f);
+                AppLog.write(context, "Ліміт пам’яті: видалено " + f.getName());
+            }
+            s = snapshot();
+            return StoragePolicy.plan(s.closed, s.pending, required, config.quota(),
+                    readyDir.getUsableSpace(), false).enoughSpace;
+        }
+    }
     long[] stats() throws IOException {
-        Snapshot s = snapshot();
-        long used = s.pending;
-        for (StoragePolicy.Entry f : s.closed) used += f.bytes;
-        return new long[]{used, readyDir.getUsableSpace(), s.closed.size()};
+        synchronized (lock) {
+            Snapshot s = snapshot();
+            long used = s.pending;
+            for (StoragePolicy.Entry f : s.closed) used += f.bytes;
+            return new long[]{used, readyDir.getUsableSpace(), s.closed.size()};
+        }
     }
-
     private Snapshot snapshot() throws IOException {
         Snapshot s = new Snapshot();
-        File[] publicFiles = readyDir.listFiles();
-        File[] pendingFiles = pendingDir.listFiles();
-        if (publicFiles == null || pendingFiles == null) throw new IOException("Немає доступу до папки записів");
-        for (File file : publicFiles) {
-            if (owned(file, readyDir) && file.getName().endsWith(".m4a"))
-                s.closed.add(new StoragePolicy.Entry(file.getAbsolutePath(), file.length(), file.lastModified()));
+        for (RecordIndex.Entry e : index.all()) {
+            File f = e.state == RecordIndex.PUBLISHED ? published(e.finalName) : temp(e.id);
+            if (e.state == RecordIndex.PUBLISHED || e.state == RecordIndex.FAILED) {
+                if (f.isFile()) s.add(f, e.id);
+                else index.remove(e.id);
+            } else {
+                s.pending += f.length();
+                if (e.state == RecordIndex.READY && !f.exists()) s.pending += published(e.finalName).length();
+            }
         }
-        for (File file : pendingFiles) {
-            if (!owned(file, pendingDir)) continue;
-            if (file.getName().endsWith(".failed"))
-                s.closed.add(new StoragePolicy.Entry(file.getAbsolutePath(), file.length(), file.lastModified()));
-            else s.pending += file.length();
+        File[] output = readyDir.listFiles();
+        if (output == null) throw new IOException("Немає доступу до папки записів");
+        for (File f : output) if (legacyOwned(f, readyDir) && f.getName().endsWith(".m4a")) s.add(f, null);
+        if (legacyDir.isDirectory()) {
+            File[] old = legacyDir.listFiles();
+            if (old == null) throw new IOException("Немає доступу до старої робочої папки");
+            for (File f : old) if (legacyOwned(f, legacyDir)) {
+                if (f.getName().endsWith(".failed")) s.add(f, null); else s.pending += f.length();
+            }
         }
         return s;
     }
-
     private static final class Snapshot {
         final List<StoragePolicy.Entry> closed = new ArrayList<>();
+        final Map<String, String> rowIds = new HashMap<>();
         long pending;
-    }
-
-    void finish(File part) throws IOException {
-        if (part == null || !part.exists()) return;
-        if (!owned(part, pendingDir)) throw new IOException("Сторонній файл у завершенні запису");
-        if (validAudio(part)) {
-            File ready = suffix(part, ".ready");
-            move(part, ready);
-            publish(ready);
-        } else {
-            move(part, suffix(part, ".failed"));
-            AppLog.write(context, "Незавершений файл ізольовано: " + part.getName());
+        void add(File f, String id) {
+            closed.add(new StoragePolicy.Entry(f.getAbsolutePath(), f.length(), f.lastModified()));
+            if (id != null) rowIds.put(f.getAbsolutePath(), id);
         }
     }
-
-    /** Called only before a recording starts, never against an active .part file. */
-    void recover() throws IOException {
-        File[] files = pendingDir.listFiles();
-        if (files == null) throw new IOException("Немає доступу до робочої папки");
-        for (File file : files) {
-            if (!owned(file, pendingDir)) continue;
-            if (file.getName().endsWith(".part")) finish(file);
-            else if (file.getName().endsWith(".ready")) publish(file);
-        }
+    private void scan(File f) {
+        MediaScannerConnection.scanFile(context, new String[]{f.getAbsolutePath()}, new String[]{"audio/mp4"}, null);
     }
-
-    private void publish(File file) throws IOException {
-        File target = new File(readyDir, suffix(file, ".m4a").getName());
-        move(file, target);
-        MediaScannerConnection.scanFile(context, new String[]{target.getAbsolutePath()},
-                new String[]{"audio/mp4"}, null);
-        AppLog.write(context, "Готовий файл: " + target.getName() + " (" + target.length() + " байтів)");
-    }
-
-    private static File suffix(File file, String suffix) {
-        String name = file.getName();
-        return new File(file.getParentFile(), name.substring(0, name.lastIndexOf('.')) + suffix);
-    }
-
     private static void move(File source, File target) throws IOException {
-        // Never copy a partially written file into the watched public directory.
-        if (target.exists() || !source.renameTo(target))
-            throw new IOException("Не вдалося перемістити завершений файл: " + source.getName());
+        if (target.exists() || !source.renameTo(target)) throw new IOException("Не вдалося опублікувати файл: " + source.getName());
     }
-
-    private static boolean validAudio(File file) {
-        if (file.length() == 0) return false;
+    private static long duration(File f) {
+        if (!f.isFile() || f.length() == 0) return 0;
         MediaMetadataRetriever retriever = new MediaMetadataRetriever();
         try {
-            retriever.setDataSource(file.getAbsolutePath());
-            String duration = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION);
-            return duration != null && Long.parseLong(duration) > 0;
-        } catch (Exception e) { return false; }
+            retriever.setDataSource(f.getAbsolutePath());
+            String value = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION);
+            return value == null ? 0 : Long.parseLong(value);
+        } catch (Exception e) { return 0; }
         finally { try { retriever.release(); } catch (Exception ignored) { } }
     }
+    @Override public void close() { index.close(); }
 }

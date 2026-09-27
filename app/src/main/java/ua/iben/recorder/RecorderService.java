@@ -8,15 +8,12 @@ import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Intent;
 import android.content.pm.PackageManager;
-import android.media.MediaRecorder;
 import android.os.Build;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.IBinder;
 import android.os.PowerManager;
 import android.os.SystemClock;
-import java.io.File;
-import java.io.IOException;
 
 public final class RecorderService extends Service {
     static final String START = "ua.iben.recorder.START";
@@ -28,247 +25,150 @@ public final class RecorderService extends Service {
     private PowerManager.WakeLock wakeLock;
     private Config config;
     private RecordingFiles files;
-    private MediaRecorder recorder;
-    private File part;
-    private boolean running;
-    private boolean stopping;
-    private long segmentElapsed;
-    private long segmentWall;
-    private long lastBytes;
-    private long lastGrowth;
-    private long segmentLength;
-    private long lastStorageCheck;
+    private ContinuousRecorder recorder;
+    private boolean destroying;
     private int retryCount;
     private int latestStartId;
+    private long stableSince;
+    private long lastStats;
 
     @Override public void onCreate() {
         super.onCreate();
         config = new Config(this);
-        NotificationManager manager = getSystemService(NotificationManager.class);
-        NotificationChannel channel = new NotificationChannel(CHANNEL, "Аудіозапис",
-                NotificationManager.IMPORTANCE_LOW);
+        NotificationChannel channel = new NotificationChannel(CHANNEL, "Аудіозапис", NotificationManager.IMPORTANCE_LOW);
         channel.setDescription("Стан безперервного запису та кнопка зупинки");
-        manager.createNotificationChannel(channel);
+        getSystemService(NotificationManager.class).createNotificationChannel(channel);
         startForeground(NOTIFICATION, notification("Підготовка…"));
-        thread = new HandlerThread("recorder-control");
-        thread.start();
+        thread = new HandlerThread("iben-control"); thread.start();
         worker = new Handler(thread.getLooper());
-        wakeLock = getSystemService(PowerManager.class).newWakeLock(
-                PowerManager.PARTIAL_WAKE_LOCK, "J7Recorder:recording");
+        wakeLock = getSystemService(PowerManager.class).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "IbenRecorder:recording");
         wakeLock.setReferenceCounted(false);
     }
-
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
         worker.post(() -> {
             latestStartId = startId;
             String action = intent == null ? null : intent.getAction();
             if (STOP.equals(action)) {
-                config.wanted(false);
-                stopRequested("Запис зупинено");
+                config.wanted(false); worker.removeCallbacks(retry);
+                if (recorder != null) { report("Завершення й збереження запису…", 0); recorder.stop(); }
+                else finishStopped("Запис зупинено");
                 return;
             }
             if (START.equals(action)) config.wanted(true);
-            if (!config.wanted()) {
-                stopRequested("Запис вимкнено");
-                return;
-            }
+            if (!config.wanted()) { if (recorder == null) finishStopped("Запис вимкнено"); return; }
             if (Build.VERSION.SDK_INT != 29 || !permissionsGranted()) {
                 config.wanted(false);
-                stopRequested(Build.VERSION.SDK_INT != 29
-                        ? "Цей прототип призначений для Android 10"
-                        : "Потрібні дозволи на мікрофон і файли");
+                String reason = Build.VERSION.SDK_INT != 29 ? "Потрібен Android 10" : "Потрібні дозволи на мікрофон і файли";
+                if (recorder != null) recorder.abort(reason); else finishStopped(reason);
                 return;
             }
-            if (running) return;
-            stopping = false;
-            running = true;
-            // A dedicated recorder must continue while the screen is off.
-            // Released on every explicit stop / service destruction; the OS releases on process death.
             if (!wakeLock.isHeld()) wakeLock.acquire();
-            AppLog.write(this, "Сервіс запущено");
-            beginSegment();
+            if (recorder == null) { worker.removeCallbacks(retry); begin(); }
         });
         return START_STICKY;
     }
-
     private boolean permissionsGranted() {
         return checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
                 && checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED;
     }
-
-    private void beginSegment() {
-        if (!running || stopping) return;
-        worker.removeCallbacks(retry);
+    private void begin() {
+        if (destroying || !config.wanted() || recorder != null) return;
         try {
             if (files == null) files = new RecordingFiles(this, config);
-            files.recover();
-            long budget = StoragePolicy.segmentBudget(config.minutes(), config.bitrate());
-            if (!files.ensureRoom(budget))
-                throw new IOException("Недостатньо місця в межах ліміту; очікування вільної пам’яті");
-            part = files.newPart();
-            final MediaRecorder current = new MediaRecorder();
-            recorder = current;
-            current.setAudioSource(MediaRecorder.AudioSource.MIC);
-            current.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);
-            current.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);
-            current.setAudioChannels(1);
-            current.setAudioSamplingRate(config.sampleRate());
-            current.setAudioEncodingBitRate(config.bitrate() * 1000);
-            current.setOutputFile(part.getAbsolutePath());
-            current.setOnErrorListener((source, what, extra) -> worker.post(() -> {
-                if (recorder == current && running && !stopping)
-                    recordingFailed("Помилка аудіокодека: " + what + "/" + extra);
-            }));
-            // Use our serialized timer, not setMaxDuration's asynchronously stopped callback.
-            current.prepare();
-            current.start();
-            segmentElapsed = SystemClock.elapsedRealtime();
-            segmentWall = System.currentTimeMillis();
-            segmentLength = config.minutes() * 60000L;
-            lastBytes = part.length();
-            lastGrowth = segmentElapsed;
-            lastStorageCheck = segmentElapsed;
-            retryCount = 0;
-            worker.postDelayed(rotate, segmentLength);
-            worker.postDelayed(heartbeat, 5000);
-            report("Триває запис", segmentWall);
-            AppLog.write(this, "Запис: " + config.minutes() + " хв, AAC " + config.bitrate()
-                    + " кбіт/с, " + config.sampleRate() + " Гц, моно");
-        } catch (Exception e) {
-            recordingFailed("Не вдалося почати запис: " + message(e));
-        }
+            recorder = new ContinuousRecorder(config, files, (ended, error) -> worker.post(() -> ended(ended, error)));
+            config.prefs.edit().putBoolean("engine_active", true).putLong("segment_ms", 0).apply();
+            stableSince = SystemClock.elapsedRealtime(); lastStats = 0;
+            report("Підготовка запису…", 0);
+            AppLog.write(this, "Запуск безперервного аудіодвигуна");
+            recorder.start();
+            worker.removeCallbacks(heartbeat); worker.post(heartbeat);
+        } catch (Exception e) { recorder = null; scheduleRetry(e); }
     }
-
-    private final Runnable rotate = () -> {
-        if (!running || stopping) return;
-        try {
-            finishSegment();
-            beginSegment();
-        } catch (Exception e) { recordingFailed("Помилка завершення: " + message(e)); }
-    };
-
-    private final Runnable retry = () -> {
-        if (running && !stopping) beginSegment();
-    };
-
-    private final Runnable heartbeat = new Runnable() {
-        @Override public void run() {
-            if (!running || stopping || recorder == null || part == null) return;
-            try {
-                long now = SystemClock.elapsedRealtime();
-                long bytes = part.length();
-                if (bytes > lastBytes) { lastBytes = bytes; lastGrowth = now; }
-                if (now - lastGrowth > 120000L) {
-                    recordingFailed("Файл не збільшується понад 2 хвилини; повторний запуск");
-                    return;
-                }
-                if (now - lastStorageCheck >= 60000L) {
-                    lastStorageCheck = now;
-                    long remaining = Math.max(0, segmentLength - (now - segmentElapsed));
-                    long expectedRemaining = remaining * config.bitrate() / 8L;
-                    if (!files.ensureRoom(expectedRemaining + 2 * StoragePolicy.MIB)) {
-                        recordingFailed("Мало вільної пам’яті; поточний фрагмент завершено");
-                        return;
-                    }
-                }
-                long[] stats = files.stats();
-                config.prefs.edit().putLong("used_bytes", stats[0]).putLong("free_bytes", stats[1])
-                        .putLong("closed_count", stats[2]).apply();
-                report("Триває запис", segmentWall);
-                worker.postDelayed(this, 5000L);
-            } catch (Exception e) { recordingFailed("Контроль запису: " + message(e)); }
-        }
-    };
-
-    private void finishSegment() throws IOException {
-        worker.removeCallbacks(rotate);
-        worker.removeCallbacks(heartbeat);
-        MediaRecorder current = recorder;
-        File completed = part;
+    private void ended(ContinuousRecorder ended, Throwable error) {
+        if (recorder != ended) return;
         recorder = null;
-        part = null;
-        segmentWall = 0;
-        if (current != null) {
-            try {
-                current.setOnErrorListener(null);
-                current.stop();
-            } catch (RuntimeException e) {
-                AppLog.write(this, "Кодек не завершив файл штатно: " + message(e));
-            } finally {
-                try { current.release(); } catch (RuntimeException ignored) { }
-            }
-        }
-        if (files != null && completed != null) files.finish(completed);
+        worker.removeCallbacks(heartbeat);
+        config.prefs.edit().putBoolean("engine_active", false).putInt("peak", 0).putInt("finishing", 0).apply();
+        try { updateStats(); } catch (Exception ignored) { }
+        if (error != null) AppLog.write(this, "Помилка запису: " + message(error));
+        if (destroying) { releaseResources(); thread.quitSafely(); }
+        else if (config.wanted()) {
+            if (error == null) begin(); else scheduleRetry(error);
+        } else finishStopped(error == null ? "Запис зупинено; файли збережено" : "Запис зупинено з помилкою: " + message(error));
     }
-
-    private void recordingFailed(String text) {
-        try { finishSegment(); }
-        catch (Exception e) { AppLog.write(this, "Залишено файл для відновлення: " + message(e)); }
-        AppLog.write(this, text);
-        if (!running || stopping) return;
+    private final Runnable retry = this::begin;
+    private void scheduleRetry(Throwable error) {
+        config.prefs.edit().putBoolean("engine_active", false).apply();
+        if (destroying || !config.wanted()) { finishStopped(message(error)); return; }
         long delay = retryCount == 0 ? 5000L : retryCount == 1 ? 15000L : 60000L;
         retryCount = Math.min(2, retryCount + 1);
-        report(text + ". Повтор через " + delay / 1000L + " с", 0);
-        worker.removeCallbacks(retry);
-        worker.postDelayed(retry, delay);
+        AppLog.write(this, message(error) + "; повтор через " + delay / 1000L + " с");
+        report(message(error) + ". Повтор через " + delay / 1000L + " с", 0);
+        worker.removeCallbacks(retry); worker.postDelayed(retry, delay);
     }
-
-    private void stopRequested(String text) {
-        stopping = true;
-        running = false;
-        worker.removeCallbacks(rotate);
-        worker.removeCallbacks(heartbeat);
-        worker.removeCallbacks(retry);
-        try { finishSegment(); }
-        catch (Exception e) { AppLog.write(this, "Файл залишено для відновлення: " + message(e)); }
-        config.status(text, 0);
-        AppLog.write(this, text);
-        releaseWakeLock();
-        // Queue stop on the main thread; stopSelfResult protects a more recent start request.
+    private final Runnable heartbeat = new Runnable() {
+        @Override public void run() {
+            if (destroying || recorder == null) return;
+            ContinuousRecorder current = recorder;
+            long now = SystemClock.elapsedRealtime();
+            if (current.recording() && config.wanted()
+                    && (now - current.lastCapture() > 30000L || now - current.lastWrite() > 30000L))
+                current.abort("Немає нового аудіо понад 30 секунд");
+            if (now - stableSince > 300000L) retryCount = 0;
+            try { if (now - lastStats >= 10000L) { updateStats(); lastStats = now; } }
+            catch (Exception e) { current.abort("Контроль пам’яті: " + message(e)); }
+            config.prefs.edit().putLong("segment_ms", current.segmentMillis())
+                    .putInt("peak", Math.round(current.peak() * 100))
+                    .putBoolean("limiting", current.limitedFraction() > 0.01f)
+                    .putInt("finishing", current.finishing()).apply();
+            String status = !config.wanted() ? "Завершення й збереження запису…"
+                    : current.recording() ? "Триває запис" : "Підготовка або завершення аудіодвигуна…";
+            report(status, current.segmentStart());
+            worker.postDelayed(this, 1000L);
+        }
+    };
+    private void updateStats() throws Exception {
+        if (files == null) return;
+        long[] stats = files.stats();
+        config.prefs.edit().putLong("used_bytes", stats[0]).putLong("free_bytes", stats[1]).putLong("closed_count", stats[2]).apply();
+    }
+    private void finishStopped(String text) {
+        worker.removeCallbacks(retry); worker.removeCallbacks(heartbeat);
+        config.prefs.edit().putBoolean("engine_active", false).putInt("peak", 0).putInt("finishing", 0).apply();
+        config.status(text, 0); AppLog.write(this, text);
+        releaseResources();
         final int completedStartId = latestStartId;
         new Handler(getMainLooper()).post(() -> stopSelfResult(completedStartId));
     }
-
+    private void releaseResources() {
+        if (files != null) { files.close(); files = null; }
+        if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
+    }
     private void report(String text, long start) {
         config.status(text, start);
         getSystemService(NotificationManager.class).notify(NOTIFICATION, notification(text));
     }
-
     private Notification notification(String text) {
         PendingIntent open = PendingIntent.getActivity(this, 1, new Intent(this, MainActivity.class),
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-        PendingIntent stop = PendingIntent.getService(this, 2,
-                new Intent(this, RecorderService.class).setAction(STOP),
+        PendingIntent stop = PendingIntent.getService(this, 2, new Intent(this, RecorderService.class).setAction(STOP),
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-        return new Notification.Builder(this, CHANNEL)
-                .setSmallIcon(R.drawable.ic_mic).setContentTitle("J7 Recorder")
+        return new Notification.Builder(this, CHANNEL).setSmallIcon(R.drawable.ic_mic).setContentTitle("Iben Recorder")
                 .setContentText(text).setContentIntent(open).setOngoing(true).setOnlyAlertOnce(true)
                 .setCategory(Notification.CATEGORY_SERVICE)
                 .addAction(new Notification.Action.Builder(null, "Зупинити", stop).build()).build();
     }
-
-    private void releaseWakeLock() {
-        if (wakeLock != null && wakeLock.isHeld()) wakeLock.release();
-    }
-
     @Override public void onDestroy() {
-        if (worker != null) {
-            // Let the worker serialize cleanup with any in-progress prepare/stop operation.
-            worker.post(() -> {
-                stopping = true;
-                running = false;
-                worker.removeCallbacksAndMessages(null);
-                try { finishSegment(); }
-                catch (Exception e) { AppLog.write(this, "Завершення сервісу: " + message(e)); }
-                releaseWakeLock();
-                thread.quitSafely();
-            });
-        } else releaseWakeLock();
+        if (worker != null) worker.post(() -> {
+            destroying = true;
+            worker.removeCallbacks(retry); worker.removeCallbacks(heartbeat);
+            if (recorder != null) recorder.stop();
+            else { releaseResources(); thread.quitSafely(); }
+        });
         stopForeground(true);
         super.onDestroy();
     }
-
-    private static String message(Exception e) {
+    private static String message(Throwable e) {
         return e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
     }
     @Override public IBinder onBind(Intent intent) { return null; }
