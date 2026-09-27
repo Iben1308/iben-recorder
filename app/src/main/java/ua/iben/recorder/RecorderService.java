@@ -16,8 +16,8 @@ import android.os.PowerManager;
 import android.os.SystemClock;
 
 public final class RecorderService extends Service {
-    static final String START = "ua.iben.recorder.START";
-    static final String STOP = "ua.iben.recorder.STOP";
+    static final String START = "ua.iben.recorder.oreo.START";
+    static final String STOP = "ua.iben.recorder.oreo.STOP";
     private static final String CHANNEL = "recording";
     private static final int NOTIFICATION = 1;
     private HandlerThread thread;
@@ -41,7 +41,7 @@ public final class RecorderService extends Service {
         startForeground(NOTIFICATION, notification("Підготовка…"));
         thread = new HandlerThread("iben-control"); thread.start();
         worker = new Handler(thread.getLooper());
-        wakeLock = getSystemService(PowerManager.class).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "IbenRecorder:recording");
+        wakeLock = getSystemService(PowerManager.class).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "IbenRecorder81:recording");
         wakeLock.setReferenceCounted(false);
     }
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
@@ -56,9 +56,9 @@ public final class RecorderService extends Service {
             }
             if (START.equals(action)) config.wanted(true);
             if (!config.wanted()) { if (recorder == null) finishStopped("Запис вимкнено"); return; }
-            if (Build.VERSION.SDK_INT != 29 || !permissionsGranted()) {
+            if (Build.VERSION.SDK_INT != Build.VERSION_CODES.O_MR1 || !permissionsGranted()) {
                 config.wanted(false);
-                String reason = Build.VERSION.SDK_INT != 29 ? "Потрібен Android 10" : "Потрібні дозволи на мікрофон і файли";
+                String reason = Build.VERSION.SDK_INT != Build.VERSION_CODES.O_MR1 ? "Потрібен Android 8.1" : "Потрібні дозволи на мікрофон і файли";
                 if (recorder != null) recorder.abort(reason); else finishStopped(reason);
                 return;
             }
@@ -153,7 +153,7 @@ public final class RecorderService extends Service {
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         PendingIntent stop = PendingIntent.getService(this, 2, new Intent(this, RecorderService.class).setAction(STOP),
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-        return new Notification.Builder(this, CHANNEL).setSmallIcon(R.drawable.ic_mic).setContentTitle("Iben Recorder")
+        return new Notification.Builder(this, CHANNEL).setSmallIcon(R.drawable.ic_mic).setContentTitle("Iben Recorder 8.1")
                 .setContentText(text).setContentIntent(open).setOngoing(true).setOnlyAlertOnce(true)
                 .setCategory(Notification.CATEGORY_SERVICE)
                 .addAction(new Notification.Action.Builder(null, "Зупинити", stop).build()).build();

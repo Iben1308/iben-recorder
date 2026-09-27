@@ -68,9 +68,9 @@ public final class MainActivity extends Activity {
         scroll.addView(root);
         setContentView(scroll);
 
-        TextView title = text("Iben Recorder", 28);
+        TextView title = text("Iben Recorder 8.1", 28);
         title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        text("Безперервний аудіозапис · 0.2", 14);
+        text("Прототип для Android 8.1 · 0.2-oreo.1", 14);
         space(18);
         status = text("Запис вимкнено", 21);
         status.setTextColor(Color.parseColor(dark ? "#76D8C7" : "#136F63"));
@@ -151,8 +151,8 @@ public final class MainActivity extends Activity {
             @Override public void onNothingSelected(AdapterView<?> parent) { }
         });
         text("Тему можна змінювати під час запису.", 13);
-        if (Build.VERSION.SDK_INT != 29)
-            text("Цей прототип працює лише на Android 10. На цьому пристрої запис вимкнено.", 15).setTextColor(Color.RED);
+        if (Build.VERSION.SDK_INT != Build.VERSION_CODES.O_MR1)
+            text("Цей прототип працює лише на Android 8.1. На цьому пристрої запис вимкнено.", 15).setTextColor(Color.RED);
     }
 
     private boolean saveSettings() {
@@ -166,7 +166,7 @@ public final class MainActivity extends Activity {
     }
 
     private void startPressed() {
-        if (Build.VERSION.SDK_INT != 29) { toast("Потрібен Android 10"); return; }
+        if (Build.VERSION.SDK_INT != Build.VERSION_CODES.O_MR1) { toast("Потрібен Android 8.1"); return; }
         if (!config.wanted() && !saveSettings()) return;
         for (String permission : PERMISSIONS) {
             if (checkSelfPermission(permission) != PackageManager.PERMISSION_GRANTED) {
@@ -215,7 +215,7 @@ public final class MainActivity extends Activity {
         levelLabel.setText(active && !stale ? "Рівень звуку: " + peak + "%"
                 + (config.prefs.getBoolean("limiting", false) ? " · обмеження піків" : "") : "Рівень звуку: —");
         for (View view : new View[]{minutes, quota, bitrate, sampling, cleanup, boot, save}) view.setEnabled(!wanted && (!active || stale));
-        start.setEnabled(Build.VERSION.SDK_INT == 29 && (!active || stale));
+        start.setEnabled(Build.VERSION.SDK_INT == Build.VERSION_CODES.O_MR1 && (!active || stale));
         stop.setEnabled(wanted);
     }
 

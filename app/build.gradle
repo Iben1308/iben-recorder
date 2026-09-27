@@ -4,11 +4,11 @@ android {
     namespace 'ua.iben.recorder'
     compileSdk 35
     defaultConfig {
-        applicationId 'ua.iben.recorder'
-        minSdk 29
-        targetSdk 29
-        versionCode 2
-        versionName '0.2.0'
+        applicationId 'ua.iben.recorder.oreo'
+        minSdk 27
+        targetSdk 27
+        versionCode 1
+        versionName '0.2-oreo.1'
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8

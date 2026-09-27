@@ -12,7 +12,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-/** Private staging and public output stay on the same primary volume (Android 10). */
+/** Private staging and public output stay on the same primary volume (Android 8.1). */
 final class RecordingFiles implements AutoCloseable {
     static final class Part {
         final String id;
@@ -47,8 +47,8 @@ final class RecordingFiles implements AutoCloseable {
 
     @SuppressWarnings("deprecation")
     static File publicDirectory() {
-        // Preserve the user's existing Nextcloud auto-upload folder when upgrading.
-        return new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC), "J7Recorder");
+        // Keep this prototype isolated from the Android 10 app and its archive.
+        return new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC), "IbenRecorder81");
     }
     private static void mkdir(File directory) throws IOException {
         if (!directory.isDirectory() && !directory.mkdirs()) throw new IOException("Не вдалося створити папку: " + directory);
