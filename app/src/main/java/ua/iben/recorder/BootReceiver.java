@@ -12,6 +12,7 @@ public final class BootReceiver extends BroadcastReceiver {
         if (!Intent.ACTION_BOOT_COMPLETED.equals(action)
                 && !Intent.ACTION_MY_PACKAGE_REPLACED.equals(action)) return;
         Config config = new Config(context);
+        if (Build.VERSION.SDK_INT == Build.VERSION_CODES.O_MR1) SyncScheduler.kick(context);
         if (Build.VERSION.SDK_INT == Build.VERSION_CODES.O_MR1 && config.wanted() && config.resumeAtBoot()) {
             try {
                 context.startForegroundService(new Intent(context, RecorderService.class));

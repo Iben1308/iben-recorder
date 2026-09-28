@@ -53,6 +53,7 @@ public final class MainActivity extends Activity {
     private TextView gainLabel;
     private TextView levelLabel;
     private ProgressBar level;
+    private TextView cloudStatus;
 
     @Override public void onCreate(Bundle state) {
         config = new Config(this);
@@ -70,7 +71,7 @@ public final class MainActivity extends Activity {
 
         TextView title = text("Iben Recorder 8.1", 28);
         title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        text("Прототип для Android 8.1 · 0.2-oreo.1", 14);
+        text("Android 8.1 · WebDAV · 0.3-oreo.1", 14);
         space(18);
         status = text("Запис вимкнено", 21);
         status.setTextColor(Color.parseColor(dark ? "#76D8C7" : "#136F63"));
@@ -111,16 +112,19 @@ public final class MainActivity extends Activity {
         bitrate = spinner(new String[]{"64", "96", "128", "192", "256"}, String.valueOf(config.bitrate()));
         text("Частота дискретизації, Гц", 14);
         sampling = spinner(new String[]{"44100", "48000"}, String.valueOf(config.sampleRate()));
-        cleanup = toggle("Видаляти найстаріші власні записи при ліміті", config.deleteOldest());
-        text("Застосунок не знає, чи Nextcloud уже завантажив файл. Автовидалення може стерти ще не завантажений запис.", 13);
+        cleanup = toggle("При ліміті видаляти найстаріші передані записи", config.deleteOldest());
+        text("Очищення дозволене лише після перевіреної WebDAV-передачі. Якщо місце заповнене непереданими файлами, запис чекатиме його звільнення.", 13);
         boot = toggle("Відновлювати активний запис після перезавантаження", config.resumeAtBoot());
         text("На зашифрованому телефоні може знадобитися перше розблокування після запуску системи.", 13);
         save = button("Зберегти налаштування", () -> { if (saveSettings()) toast("Налаштування збережено"); });
 
         space(20);
-        text("Папка для Nextcloud", 19).setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        text("Nextcloud", 19).setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        cloudStatus = text("", 14);
+        button("Підключення Nextcloud (WebDAV)", () -> startActivity(new Intent(this, CloudActivity.class)));
+        text("Готові локальні файли", 19).setTypeface(Typeface.DEFAULT, Typeface.BOLD);
         text(RecordingFiles.publicDirectory().getAbsolutePath(), 14).setTextIsSelectable(true);
-        text("Додайте цю папку в автозавантаження Nextcloud. Тут з’являються лише завершені файли .m4a.", 13);
+        text("Тут з’являються лише завершені файли .m4a. Передачею керує сам реєстратор.", 13);
         button("Скопіювати шлях", () -> {
             getSystemService(ClipboardManager.class).setPrimaryClip(ClipData.newPlainText("Папка записів",
                     RecordingFiles.publicDirectory().getAbsolutePath()));
@@ -193,7 +197,7 @@ public final class MainActivity extends Activity {
         @Override public void run() { refresh(); timer.postDelayed(this, 1000L); }
     };
 
-    @Override public void onResume() { super.onResume(); timer.post(refreshLoop); }
+    @Override public void onResume() { super.onResume(); timer.post(refreshLoop); SyncScheduler.kick(this); }
     @Override public void onPause() { timer.removeCallbacksAndMessages(null); super.onPause(); }
 
     private void refresh() {
@@ -217,6 +221,7 @@ public final class MainActivity extends Activity {
         for (View view : new View[]{minutes, quota, bitrate, sampling, cleanup, boot, save}) view.setEnabled(!wanted && (!active || stale));
         start.setEnabled(Build.VERSION.SDK_INT == Build.VERSION_CODES.O_MR1 && (!active || stale));
         stop.setEnabled(wanted);
+        cloudStatus.setText(new CloudSettings(this).prefs.getString("status", "WebDAV ще не налаштовано; непередані файли захищені"));
     }
 
     private TextView text(String value, int size) {

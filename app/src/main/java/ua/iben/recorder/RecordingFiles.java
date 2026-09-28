@@ -27,7 +27,8 @@ final class RecordingFiles implements AutoCloseable {
     private final Config config;
     private final String owner;
     private final RecordIndex index;
-    private final Object lock = new Object();
+    // Shared by recording, upload, and settings instances in this process.
+    static final Object LOCK = new Object();
     final File pendingDir;
     final File readyDir;
     private final File legacyDir;
@@ -73,7 +74,7 @@ final class RecordingFiles implements AutoCloseable {
     }
 
     Part create(long start, String zone, long budget) throws IOException {
-        synchronized (lock) {
+        synchronized (LOCK) {
             if (!ensureRoom(budget)) throw new IOException("Недостатньо місця для наступного фрагмента");
             String id = UUID.randomUUID().toString();
             File f = temp(id);
@@ -87,11 +88,11 @@ final class RecordingFiles implements AutoCloseable {
     void finish(Part part) throws IOException {
         long duration = duration(part.file);
         if (duration <= 0) {
-            synchronized (lock) { index.state(part.id, RecordIndex.FAILED); }
+            synchronized (LOCK) { index.state(part.id, RecordIndex.FAILED); }
             throw new IOException("Фрагмент не має читабельного аудіо; залишено у .temp");
         }
         File target;
-        synchronized (lock) {
+        synchronized (LOCK) {
             int duplicate = 0;
             String name;
             do {
@@ -105,9 +106,10 @@ final class RecordingFiles implements AutoCloseable {
         }
         scan(target);
         AppLog.write(context, "Готовий файл: " + target.getName() + " (" + target.length() + " байтів)");
+        SyncScheduler.kick(context);
     }
     void failed(Part part) {
-        synchronized (lock) { index.state(part.id, RecordIndex.FAILED); }
+        synchronized (LOCK) { index.state(part.id, RecordIndex.FAILED); }
     }
 
     /** Run only with all capture, writer and finalizer threads stopped. */
@@ -140,13 +142,13 @@ final class RecordingFiles implements AutoCloseable {
     }
 
     boolean ensureRoom(long required) throws IOException {
-        synchronized (lock) {
+        synchronized (LOCK) {
             Snapshot s = snapshot();
             StoragePolicy.Plan plan = StoragePolicy.plan(s.closed, s.pending, required,
                     config.quota(), readyDir.getUsableSpace(), config.deleteOldest());
             if (!plan.enoughSpace) return false;
             for (String path : plan.deleteIds) {
-                // Candidates come only from the ledger or the previous installation's owner prefix.
+                // Only closed files with a matching verified cloud receipt can reach this list.
                 File f = new File(path);
                 if (!f.delete()) throw new IOException("Не вдалося видалити старий фрагмент");
                 String id = s.rowIds.get(path);
@@ -160,7 +162,7 @@ final class RecordingFiles implements AutoCloseable {
         }
     }
     long[] stats() throws IOException {
-        synchronized (lock) {
+        synchronized (LOCK) {
             Snapshot s = snapshot();
             long used = s.pending;
             for (StoragePolicy.Entry f : s.closed) used += f.bytes;
@@ -169,10 +171,14 @@ final class RecordingFiles implements AutoCloseable {
     }
     private Snapshot snapshot() throws IOException {
         Snapshot s = new Snapshot();
+        String target = new CloudSettings(context).targetKey();
         for (RecordIndex.Entry e : index.all()) {
             File f = e.state == RecordIndex.PUBLISHED ? published(e.finalName) : temp(e.id);
             if (e.state == RecordIndex.PUBLISHED || e.state == RecordIndex.FAILED) {
-                if (f.isFile()) s.add(f, e.id);
+                if (f.isFile()) {
+                    if (e.state == RecordIndex.PUBLISHED && isVerified(e, f, target)) s.add(f, e.id);
+                    else s.pending += f.length();
+                }
                 else index.remove(e.id);
             } else {
                 s.pending += f.length();
@@ -181,15 +187,54 @@ final class RecordingFiles implements AutoCloseable {
         }
         File[] output = readyDir.listFiles();
         if (output == null) throw new IOException("Немає доступу до папки записів");
-        for (File f : output) if (legacyOwned(f, readyDir) && f.getName().endsWith(".m4a")) s.add(f, null);
+        for (File f : output) if (legacyOwned(f, readyDir) && f.getName().endsWith(".m4a")) s.pending += f.length();
         if (legacyDir.isDirectory()) {
             File[] old = legacyDir.listFiles();
             if (old == null) throw new IOException("Немає доступу до старої робочої папки");
             for (File f : old) if (legacyOwned(f, legacyDir)) {
-                if (f.getName().endsWith(".failed")) s.add(f, null); else s.pending += f.length();
+                s.pending += f.length();
             }
         }
         return s;
+    }
+    private boolean isVerified(RecordIndex.Entry entry, File file, String target) {
+        return TransferPolicy.verified(target, entry.verifiedTarget, file.length(), entry.verifiedSize,
+                file.lastModified(), entry.verifiedModified, entry.verifiedHash);
+    }
+    static final class Upload {
+        final String id;
+        final File file;
+        final String name;
+        final String remoteName;
+        Upload(RecordIndex.Entry e, File file) {
+            id = e.id; this.file = file; name = e.finalName;
+            remoteName = e.remoteName == null ? e.finalName : e.remoteName;
+        }
+        String collisionName() {
+            return name.substring(0, name.length() - 4) + "_" + id + ".m4a";
+        }
+    }
+    List<Upload> uploads(String target) throws IOException {
+        synchronized (LOCK) {
+            List<Upload> list = new ArrayList<>();
+            for (RecordIndex.Entry e : index.all()) if (e.state == RecordIndex.PUBLISHED) {
+                File f = published(e.finalName);
+                if (f.isFile() && !isVerified(e, f, target)) list.add(new Upload(e, f));
+            }
+            return list;
+        }
+    }
+    void uploadName(Upload file, String remoteName) {
+        synchronized (LOCK) { index.remoteName(file.id, remoteName); }
+    }
+    void uploaded(Upload file, String target, String remoteName, DavClient.Receipt receipt) throws IOException {
+        synchronized (LOCK) {
+            // The file was protected throughout transfer; also reject external modification.
+            if (!new CloudSettings(context).targetKey().equals(target)) throw new IOException("Папку призначення змінено; попереднє підтвердження не застосовано");
+            if (!file.file.isFile() || file.file.length() != receipt.size || file.file.lastModified() != receipt.modified)
+                throw new IOException("Локальний файл змінився; його не дозволено видаляти");
+            index.verified(file.id, target, receipt, remoteName);
+        }
     }
     private static final class Snapshot {
         final List<StoragePolicy.Entry> closed = new ArrayList<>();

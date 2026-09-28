@@ -21,15 +21,41 @@ final class RecordIndex extends SQLiteOpenHelper {
         long duration;
         String finalName;
         int state;
+        String verifiedTarget;
+        long verifiedSize;
+        long verifiedModified;
+        String verifiedHash;
+        String remoteName;
     }
-    RecordIndex(Context context) { super(context, "recordings.db", null, 1); }
+    RecordIndex(Context context) { super(context, "recordings.db", null, 2); }
     @Override public void onCreate(SQLiteDatabase db) {
         db.execSQL("CREATE TABLE records (id TEXT PRIMARY KEY, start_ms INTEGER NOT NULL, "
                 + "zone TEXT NOT NULL, duration_ms INTEGER NOT NULL DEFAULT 0, "
                 + "final_name TEXT UNIQUE, state INTEGER NOT NULL)");
+        addCloudColumns(db);
     }
     @Override public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
-        throw new IllegalStateException("Unsupported recording index upgrade");
+        if (oldVersion == 1 && newVersion == 2) addCloudColumns(db);
+        else throw new IllegalStateException("Unsupported recording index upgrade");
+    }
+    private static void addCloudColumns(SQLiteDatabase db) {
+        db.execSQL("ALTER TABLE records ADD COLUMN verified_target TEXT");
+        db.execSQL("ALTER TABLE records ADD COLUMN verified_size INTEGER NOT NULL DEFAULT -1");
+        db.execSQL("ALTER TABLE records ADD COLUMN verified_modified INTEGER NOT NULL DEFAULT -1");
+        db.execSQL("ALTER TABLE records ADD COLUMN verified_hash TEXT");
+        db.execSQL("ALTER TABLE records ADD COLUMN remote_name TEXT");
+    }
+    void remoteName(String id, String name) {
+        ContentValues v = new ContentValues(); v.put("remote_name", name);
+        getWritableDatabase().update("records", v, "id=?", new String[]{id});
+    }
+    void verified(String id, String target, DavClient.Receipt receipt, String remoteName) {
+        ContentValues v = new ContentValues();
+        v.put("verified_target", target); v.put("verified_size", receipt.size);
+        v.put("verified_modified", receipt.modified); v.put("verified_hash", receipt.sha256);
+        v.put("remote_name", remoteName);
+        if (getWritableDatabase().update("records", v, "id=? AND state=?", new String[]{id, String.valueOf(PUBLISHED)}) != 1)
+            throw new IllegalStateException("Готовий запис відсутній у реєстрі");
     }
     void create(String id, long start, String zone) {
         ContentValues values = new ContentValues();
@@ -56,12 +82,16 @@ final class RecordIndex extends SQLiteOpenHelper {
     List<Entry> all() {
         List<Entry> result = new ArrayList<>();
         try (Cursor cursor = getReadableDatabase().query("records",
-                new String[]{"id", "start_ms", "zone", "duration_ms", "final_name", "state"},
+                new String[]{"id", "start_ms", "zone", "duration_ms", "final_name", "state",
+                        "verified_target", "verified_size", "verified_modified", "verified_hash", "remote_name"},
                 null, null, null, null, "start_ms ASC")) {
             while (cursor.moveToNext()) {
                 Entry e = new Entry();
                 e.id = cursor.getString(0); e.start = cursor.getLong(1); e.zone = cursor.getString(2);
                 e.duration = cursor.getLong(3); e.finalName = cursor.getString(4); e.state = cursor.getInt(5);
+                e.verifiedTarget = cursor.getString(6); e.verifiedSize = cursor.getLong(7);
+                e.verifiedModified = cursor.getLong(8); e.verifiedHash = cursor.getString(9);
+                e.remoteName = cursor.getString(10);
                 result.add(e);
             }
         }
