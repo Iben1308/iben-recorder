@@ -76,7 +76,7 @@ public final class DavClient implements AutoCloseable {
         c.setRequestProperty("X-Requested-With", "XMLHttpRequest");
         c.setRequestProperty("Accept-Encoding", "identity");
         c.setRequestProperty("Cache-Control", "no-cache, no-store");
-        c.setRequestProperty("User-Agent", "IbenRecorder/0.3-oreo.1");
+        c.setRequestProperty("User-Agent", "IbenRecorder/0.4-oreo.1");
         // HttpsURLConnection lacks a write timeout. Bound the whole request as well.
         deadline = DEADLINES.schedule(c::disconnect, 9, TimeUnit.MINUTES);
         check();

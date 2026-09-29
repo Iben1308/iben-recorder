@@ -31,12 +31,13 @@ public final class RecorderService extends Service {
     private int latestStartId;
     private long stableSince;
     private long lastStats;
+    private long lastScheduleCheck;
 
     @Override public void onCreate() {
         super.onCreate();
         config = new Config(this);
-        NotificationChannel channel = new NotificationChannel(CHANNEL, "Аудіозапис", NotificationManager.IMPORTANCE_LOW);
-        channel.setDescription("Стан безперервного запису та кнопка зупинки");
+        NotificationChannel channel = new NotificationChannel(CHANNEL, I18n.tr("Аудіозапис"), NotificationManager.IMPORTANCE_LOW);
+        channel.setDescription(I18n.tr("Стан безперервного запису та кнопка зупинки"));
         getSystemService(NotificationManager.class).createNotificationChannel(channel);
         startForeground(NOTIFICATION, notification("Підготовка…"));
         thread = new HandlerThread("iben-control"); thread.start();
@@ -45,17 +46,17 @@ public final class RecorderService extends Service {
         wakeLock.setReferenceCounted(false);
     }
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
+        String action = intent == null ? null : intent.getAction();
+        if (STOP.equals(action)) ScheduleManager.markManualStop(this);
+        if (START.equals(action)) config.prefs.edit().putString("origin", "manual").putBoolean("wanted", true).commit();
         worker.post(() -> {
             latestStartId = startId;
-            String action = intent == null ? null : intent.getAction();
-            if (STOP.equals(action)) {
-                config.wanted(false); worker.removeCallbacks(retry);
+            if (!config.wanted()) {
+                worker.removeCallbacks(retry);
                 if (recorder != null) { report("Завершення й збереження запису…", 0); recorder.stop(); }
                 else finishStopped("Запис зупинено");
                 return;
             }
-            if (START.equals(action)) config.wanted(true);
-            if (!config.wanted()) { if (recorder == null) finishStopped("Запис вимкнено"); return; }
             if (Build.VERSION.SDK_INT != Build.VERSION_CODES.O_MR1 || !permissionsGranted()) {
                 config.wanted(false);
                 String reason = Build.VERSION.SDK_INT != Build.VERSION_CODES.O_MR1 ? "Потрібен Android 8.1" : "Потрібні дозволи на мікрофон і файли";
@@ -109,7 +110,11 @@ public final class RecorderService extends Service {
     private final Runnable heartbeat = new Runnable() {
         @Override public void run() {
             if (destroying || recorder == null) return;
+            if (SystemClock.elapsedRealtime() - lastScheduleCheck >= 10000) {
+                lastScheduleCheck = SystemClock.elapsedRealtime(); ScheduleManager.reconcile(RecorderService.this, false);
+            }
             ContinuousRecorder current = recorder;
+            if (!config.wanted()) current.stop();
             long now = SystemClock.elapsedRealtime();
             if (current.recording() && config.wanted()
                     && (now - current.lastCapture() > 30000L || now - current.lastWrite() > 30000L))
@@ -119,6 +124,7 @@ public final class RecorderService extends Service {
             catch (Exception e) { current.abort("Контроль пам’яті: " + message(e)); }
             config.prefs.edit().putLong("segment_ms", current.segmentMillis())
                     .putInt("peak", Math.round(current.peak() * 100))
+                    .putFloat("peak_raw", current.peak())
                     .putBoolean("limiting", current.limitedFraction() > 0.01f)
                     .putInt("finishing", current.finishing()).apply();
             String status = !config.wanted() ? "Завершення й збереження запису…"
@@ -154,9 +160,9 @@ public final class RecorderService extends Service {
         PendingIntent stop = PendingIntent.getService(this, 2, new Intent(this, RecorderService.class).setAction(STOP),
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         return new Notification.Builder(this, CHANNEL).setSmallIcon(R.drawable.ic_mic).setContentTitle("Iben Recorder 8.1")
-                .setContentText(text).setContentIntent(open).setOngoing(true).setOnlyAlertOnce(true)
+                .setContentText(I18n.tr(text)).setContentIntent(open).setOngoing(true).setOnlyAlertOnce(true)
                 .setCategory(Notification.CATEGORY_SERVICE)
-                .addAction(new Notification.Action.Builder(null, "Зупинити", stop).build()).build();
+                .addAction(new Notification.Action.Builder(null, I18n.s("stop"), stop).build()).build();
     }
     @Override public void onDestroy() {
         if (worker != null) worker.post(() -> {

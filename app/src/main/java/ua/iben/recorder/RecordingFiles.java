@@ -29,6 +29,29 @@ final class RecordingFiles implements AutoCloseable {
     private final RecordIndex index;
     // Shared by recording, upload, and settings instances in this process.
     static final Object LOCK = new Object();
+    private static final Map<String, Integer> READERS = new HashMap<>();
+    static final class Lease implements AutoCloseable {
+        final File file;
+        private boolean closed;
+        Lease(File file) { this.file = file; }
+        @Override public void close() {
+            synchronized (LOCK) {
+                if (closed) return;
+                closed = true;
+                String key = file.getAbsolutePath();
+                int count = READERS.getOrDefault(key, 1) - 1;
+                if (count == 0) READERS.remove(key); else READERS.put(key, count);
+            }
+        }
+    }
+    static Lease lease(File file) throws IOException {
+        synchronized (LOCK) {
+            if (!file.isFile()) throw new IOException("Локальний запис уже недоступний");
+            String key = file.getAbsolutePath();
+            READERS.put(key, READERS.getOrDefault(key, 0) + 1);
+            return new Lease(file);
+        }
+    }
     final File pendingDir;
     final File readyDir;
     private final File legacyDir;
@@ -176,7 +199,7 @@ final class RecordingFiles implements AutoCloseable {
             File f = e.state == RecordIndex.PUBLISHED ? published(e.finalName) : temp(e.id);
             if (e.state == RecordIndex.PUBLISHED || e.state == RecordIndex.FAILED) {
                 if (f.isFile()) {
-                    if (e.state == RecordIndex.PUBLISHED && isVerified(e, f, target)) s.add(f, e.id);
+                    if (e.state == RecordIndex.PUBLISHED && isVerified(e, f, target) && !READERS.containsKey(f.getAbsolutePath())) s.add(f, e.id);
                     else s.pending += f.length();
                 }
                 else index.remove(e.id);
@@ -212,6 +235,28 @@ final class RecordingFiles implements AutoCloseable {
         }
         String collisionName() {
             return name.substring(0, name.length() - 4) + "_" + id + ".m4a";
+        }
+    }
+    static final class Item {
+        final String id, name;
+        final File file;
+        final long start, duration, bytes;
+        final boolean uploaded;
+        Item(RecordIndex.Entry e, File f, boolean uploaded) {
+            id = e.id; name = e.finalName; file = f; start = e.start; duration = e.duration;
+            bytes = f.length(); this.uploaded = uploaded;
+        }
+    }
+    List<Item> recordings() throws IOException {
+        synchronized (LOCK) {
+            List<Item> result = new ArrayList<>();
+            String target = new CloudSettings(context).targetKey();
+            for (RecordIndex.Entry e : index.all()) if (e.state == RecordIndex.PUBLISHED) {
+                File f = published(e.finalName);
+                if (f.isFile()) result.add(new Item(e, f, isVerified(e, f, target)));
+            }
+            java.util.Collections.reverse(result);
+            return result;
         }
     }
     List<Upload> uploads(String target) throws IOException {

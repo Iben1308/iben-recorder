@@ -1,0 +1,110 @@
+listen	Слухати	Listen	Słuchaj
+record	Запис	Record	Nagrywaj
+settings	Налаштування	Settings	Ustawienia
+play	Слухати	Play	Odtwórz
+pause	Пауза	Pause	Pauza
+stop	Зупинити	Stop	Zatrzymaj
+choose_recording	Обери запис зі списку	Choose a recording below	Wybierz nagranie z listy
+position	Позиція відтворення	Playback position	Pozycja odtwarzania
+speed	Швидкість	Speed	Prędkość
+zoom	Масштаб шкали часу	Timeline zoom	Powiększenie osi czasu
+wave_accessibility	Шкала звуку. Торкнися, щоб перейти до часу; стрілки переміщують на 10 секунд.	Audio timeline. Tap to seek; arrow keys move 10 seconds.	Oś dźwięku. Dotknij, aby przewinąć; strzałki przesuwają o 10 sekund.
+wave_hint	Шкала та тихі ділянки з’являться після аналізу запису.	The waveform and quiet sections appear after analysis.	Wykres i ciche fragmenty pojawią się po analizie nagrania.
+recordings	Записи	Recordings	Nagrania
+refresh	Оновити	Refresh	Odśwież
+listen_hint	Лише готові локальні файли. Під час запису слухай у навушниках, щоб мікрофон не записував динамік.	Completed local files only. Use headphones while recording to keep speaker audio out of the microphone.	Tylko gotowe pliki lokalne. Podczas nagrywania używaj słuchawek, aby mikrofon nie nagrywał głośnika.
+loading	Завантаження списку…	Loading recordings…	Wczytywanie nagrań…
+no_recordings	Готових локальних записів ще немає	No completed local recordings yet	Brak gotowych nagrań lokalnych
+record_count	Записи: %d	Recordings: %d	Nagrania: %d
+analyzing	Аналіз звуку: %d%% — файл залишається без змін	Analyzing audio: %d%% — the file stays unchanged	Analiza dźwięku: %d%% — plik pozostaje bez zmian
+silence_summary	Сіре — тиша: приблизно %d%% · поріг %d dBFS	Grey marks quiet audio: about %d%% · threshold %d dBFS	Szary oznacza ciszę: około %d%% · próg %d dBFS
+analysis_failed	Не вдалося побудувати шкалу. Відтворення доступне.	Could not analyze the waveform. Playback is still available.	Nie udało się utworzyć wykresu. Odtwarzanie jest nadal dostępne.
+play_failed	Помилка відтворення (%d / %d)	Playback error (%d / %d)	Błąd odtwarzania (%d / %d)
+unavailable	Не вдалося відкрити запис	Could not open the recording	Nie udało się otworzyć nagrania
+focus_denied	Звук зайнятий іншим застосунком	Another app is using audio	Inna aplikacja korzysta z dźwięku
+speed_unsupported	Ця швидкість недоступна; відтворення на 1×	This speed is unavailable; playing at 1×	Ta prędkość jest niedostępna; odtwarzanie z prędkością 1×
+uploaded	У хмарі, перевірено	Cloud copy verified	Kopia w chmurze zweryfikowana
+local	Локальний, у черзі	Local, queued	Lokalne, w kolejce
+current_segment	Поточний фрагмент	Current segment	Bieżący fragment
+start_recording	● Почати запис	● Start recording	● Rozpocznij nagrywanie
+stop_save	■ Зупинити й зберегти	■ Stop and save	■ Zatrzymaj i zapisz
+saving	Збереження…	Saving…	Zapisywanie…
+android81	Ця версія працює лише на Android 8.1	This version supports Android 8.1 only	Ta wersja działa tylko na Androidzie 8.1
+sound	Звук	Sound	Dźwięk
+level	Гучність запису	Recording level	Poziom nagrywania
+level_value	Рівень: %d%% · %s	Level: %d%% · %s	Poziom: %d%% · %s
+limiter	Обмеження піків	Peak limiting	Ograniczanie szczytów
+gain	Підсилення: +%d дБ	Gain: +%d dB	Wzmocnienie: +%d dB
+gain_accessibility	Підсилення запису від 0 до 24 децибелів	Recording gain from 0 to 24 decibels	Wzmocnienie nagrania od 0 do 24 decybeli
+gain_hint	Змінюй підсилення під час запису. Почни з +6 дБ; підсилюється також шум.	Adjust gain while recording. Start at +6 dB; noise is amplified too.	Zmieniaj wzmocnienie podczas nagrywania. Zacznij od +6 dB; szum również jest wzmacniany.
+actual_input	Активний аудіовхід	Active audio input	Aktywne wejście audio
+record_manual_hint	Ручний запис триває до кнопки «Зупинити». Розклад керує лише записом, який він запустив.	Manual recording continues until Stop. The schedule controls only recordings it started.	Ręczne nagrywanie trwa do naciśnięcia Stop. Harmonogram steruje tylko nagraniami uruchomionymi przez siebie.
+stale	Немає свіжого стану — перевір запис	No recent status — check recording	Brak aktualnego stanu — sprawdź nagrywanie
+storage_info	Записи: %.0f / %d MiB · вільно %.0f MiB	Recordings: %.0f / %d MiB · free %.0f MiB	Nagrania: %.0f / %d MiB · wolne %.0f MiB
+format_info	Файли по %d хв · AAC %d кбіт/с · %d Гц	%d min files · AAC %d kbps · %d Hz	Pliki po %d min · AAC %d kb/s · %d Hz
+finishing	Завершується файлів: %d	Files being finalized: %d	Finalizowane pliki: %d
+permission_required	Надай потрібні дозволи в налаштуваннях застосунку	Grant the required permissions in app settings	Przyznaj wymagane uprawnienia w ustawieniach aplikacji
+appearance	Вигляд і мова	Appearance and language	Wygląd i język
+language	Мова	Language	Język
+theme	Тема	Theme	Motyw
+system	Як у системі	System default	Zgodnie z systemem
+light	Світла	Light	Jasny
+dark	Темна	Dark	Ciemny
+record_settings	Налаштування запису	Recording settings	Ustawienia nagrywania
+segment_minutes	Тривалість файла, хв (1–180)	File length, min (1–180)	Długość pliku, min (1–180)
+quota_mib	Ліміт локальних записів, MiB (128–32768)	Local recording limit, MiB (128–32768)	Limit nagrań lokalnych, MiB (128–32768)
+bitrate	Якість AAC, кбіт/с · моно	AAC bitrate, kbps · mono	Przepływność AAC, kb/s · mono
+sample_rate	Частота дискретизації, Гц	Sample rate, Hz	Częstotliwość próbkowania, Hz
+input_device	Звідки брати звук	Audio input	Źródło dźwięku
+input_auto	Автоматично — вибір Android	Automatic — Android routing	Automatycznie — wybór Androida
+input_builtin	Мікрофон телефона	Phone microphone	Mikrofon telefonu
+input_wired	Дротова гарнітура	Wired headset	Zestaw przewodowy
+input_usb	USB-мікрофон / аудіо	USB microphone / audio	Mikrofon / audio USB
+input_other	Аудіовхід	Audio input	Wejście audio
+input_unavailable	Зараз не підключено	Currently disconnected	Obecnie niepodłączone
+refresh_inputs	Оновити список входів	Refresh audio inputs	Odśwież wejścia audio
+source_mode	Режим мікрофона	Microphone mode	Tryb mikrofonu
+source_mic	Звичайний мікрофон	Standard microphone	Standardowy mikrofon
+source_voice	Розпізнавання голосу	Voice recognition	Rozpoznawanie mowy
+source_camera	Режим відеокамери	Camcorder mode	Tryb kamery
+source_raw	Без обробки — підтримується пристроєм	Unprocessed — supported by device	Bez przetwarzania — obsługiwane przez urządzenie
+input_hint	Обирай підключений вхід. Якщо вибраний пристрій від’єднається, запис чекатиме його повернення. Внутрішній звук застосунків і дзвінки тут не підтримуються.	Select a connected input. If the selected device disconnects, recording waits for it. Internal app audio and calls are not supported here.	Wybierz podłączone wejście. Po odłączeniu wybranego urządzenia nagrywanie będzie czekać na jego powrót. Dźwięk wewnętrzny aplikacji i rozmowy nie są tutaj obsługiwane.
+cleanup	При ліміті видаляти найстаріші передані записи	At the limit, delete the oldest uploaded recordings	Po osiągnięciu limitu usuń najstarsze przesłane nagrania
+cleanup_hint	Непередані файли та запис, який зараз слухаєш, захищені. Якщо місця немає, запис призупиниться.	Unverified files and the recording being played are protected. Recording pauses if space runs out.	Niezweryfikowane pliki i odtwarzane nagranie są chronione. Nagrywanie wstrzyma się, jeśli zabraknie miejsca.
+restore_manual	Відновлювати ручний запис після перезапуску	Resume manual recording after restart	Wznów ręczne nagrywanie po ponownym uruchomieniu
+save_record_settings	Зберегти параметри запису	Save recording settings	Zapisz ustawienia nagrywania
+settings_stop_hint	Для зміни цих параметрів зупини запис і дочекайся збереження.	Stop recording and wait for saving before changing these settings.	Aby zmienić te ustawienia, zatrzymaj nagrywanie i poczekaj na zapis.
+weekly_schedule	Тижневий розклад	Weekly schedule	Harmonogram tygodniowy
+enable_schedule	Записувати за розкладом	Record on a schedule	Nagrywaj według harmonogramu
+day_0	Понеділок	Monday	Poniedziałek
+day_1	Вівторок	Tuesday	Wtorek
+day_2	Середа	Wednesday	Środa
+day_3	Четвер	Thursday	Czwartek
+day_4	П’ятниця	Friday	Piątek
+day_5	Субота	Saturday	Sobota
+day_6	Неділя	Sunday	Niedziela
+from	Від	From	Od
+to	До	Until	Do
+schedule_hint	Один діапазон на день. «+1» означає наступний день; однаковий час — 24 години. Збереження активного діапазону може одразу почати запис. «Зупинити» пропускає поточний діапазон. Android може показати значок будильника.	One interval per day. “+1” means the next day; equal times mean 24 hours. Saving an active interval may start recording immediately. Stop skips the current interval. Android may show an alarm icon.	Jeden przedział na dzień. „+1” oznacza następny dzień; równe godziny oznaczają 24 godziny. Zapisanie aktywnego przedziału może od razu rozpocząć nagrywanie. Stop pomija bieżący przedział. Android może pokazać ikonę alarmu.
+save_schedule	Зберегти розклад	Save schedule	Zapisz harmonogram
+choose_day	Обери хоча б один день	Select at least one day	Wybierz co najmniej jeden dzień
+schedule_off	Розклад вимкнено	Schedule disabled	Harmonogram wyłączony
+schedule_active	Зараз діє часовий діапазон	An interval is active now	Przedział jest teraz aktywny
+schedule_waiting	Очікування наступного діапазону	Waiting for the next interval	Oczekiwanie na następny przedział
+schedule_skipped	Поточний діапазон пропущено вручну	Current interval skipped manually	Bieżący przedział pominięto ręcznie
+next_end	Кінець діапазону	Interval ends	Koniec przedziału
+next_start	Наступний початок	Next start	Następny początek
+timezone	Часовий пояс телефона	Phone time zone	Strefa czasowa telefonu
+silence	Тиша на шкалі	Quiet sections on the timeline	Ciche fragmenty na osi czasu
+silence_threshold	Поріг тиші: %d dBFS	Silence threshold: %d dBFS	Próg ciszy: %d dBFS
+silence_hint	Сірим позначаються тихі ділянки приблизно від 0,75 с. Це оцінка гучності, а не розпізнавання мовлення. Звук не вирізається.	Grey marks quiet sections of roughly 0.75 s or longer. This measures volume, not speech. No audio is removed.	Szary oznacza ciche fragmenty trwające około 0,75 s lub dłużej. To pomiar głośności, a nie rozpoznawanie mowy. Dźwięk nie jest wycinany.
+cloud_connection	Підключення Nextcloud	Nextcloud connection	Połączenie z Nextcloud
+copy_path	Скопіювати шлях до файлів	Copy recording folder path	Kopiuj ścieżkę do nagrań
+copied	Шлях скопійовано	Path copied	Ścieżka skopiowana
+service	Обслуговування	Maintenance	Obsługa
+battery	Налаштування економії батареї	Battery optimization settings	Ustawienia oszczędzania baterii
+battery_manual	Відкрий системні налаштування батареї вручну	Open system battery settings manually	Otwórz ręcznie systemowe ustawienia baterii
+log	Журнал роботи	Activity log	Dziennik działania
+close	Закрити	Close	Zamknij
+saved	Налаштування збережено	Settings saved	Ustawienia zapisane
+numbers_invalid	Перевір числові значення	Check the numeric values	Sprawdź wartości liczbowe

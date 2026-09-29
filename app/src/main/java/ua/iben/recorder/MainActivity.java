@@ -2,260 +2,171 @@ package ua.iben.recorder;
 
 import android.Manifest;
 import android.app.Activity;
-import android.app.AlertDialog;
-import android.content.ClipData;
-import android.content.ClipboardManager;
+import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
-import android.content.res.Configuration;
-import android.graphics.Color;
 import android.graphics.Typeface;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
-import android.provider.Settings;
-import android.text.InputType;
+import android.os.Looper;
+import android.view.Gravity;
 import android.view.View;
-import android.widget.ArrayAdapter;
-import android.widget.AdapterView;
-import android.widget.Button;
-import android.widget.EditText;
-import android.widget.LinearLayout;
-import android.widget.ScrollView;
-import android.widget.Spinner;
-import android.widget.SeekBar;
-import android.widget.ProgressBar;
-import android.widget.Switch;
-import android.widget.TextView;
-import android.widget.Toast;
+import android.widget.*;
 import java.util.Locale;
 
 public final class MainActivity extends Activity {
-    private static final int PERMISSION_REQUEST = 100;
-    private static final String[] PERMISSIONS = {Manifest.permission.RECORD_AUDIO,
-            Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE};
-    private final Handler timer = new Handler();
     private Config config;
-    private TextView status;
-    private TextView details;
-    private EditText minutes;
-    private EditText quota;
-    private Spinner bitrate;
-    private Spinner sampling;
-    private Switch cleanup;
-    private Switch boot;
-    private Button save;
-    private Button start;
-    private Button stop;
-    private LinearLayout root;
-    private int foreground;
-    private boolean dark;
-    private TextView gainLabel;
-    private TextView levelLabel;
+    private Ui ui;
+    private final Handler timer = new Handler(Looper.getMainLooper());
+    private final View[] pages = new View[3];
+    private final Button[] tabs = new Button[3];
+    private ListenPanel listen;
+    private SettingsPanel settings;
+    private TextView status, duration, details, gainLabel, levelLabel, cloud, input;
+    private Button record;
     private ProgressBar level;
-    private TextView cloudStatus;
+    private int currentTab = 1;
+    private Runnable afterPermission;
+    private String[] requestedPermissions;
+    private boolean resumed;
+    private long refreshed;
 
+    @Override protected void attachBaseContext(Context base) { super.attachBaseContext(LocaleContext.wrap(base)); }
     @Override public void onCreate(Bundle state) {
-        config = new Config(this);
-        dark = config.theme() == 2 || (config.theme() == 0
-                && (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES);
-        setTheme(dark ? R.style.AppTheme_Dark : R.style.AppTheme_Light);
+        config = new Config(this); ui = new Ui(this, config);
+        setTheme(ui.dark ? R.style.AppTheme_Dark : R.style.AppTheme_Light);
         super.onCreate(state);
-        foreground = Color.parseColor(dark ? "#E5ECE9" : "#212F2D");
-        ScrollView scroll = new ScrollView(this);
-        root = new LinearLayout(this);
-        root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(22), dp(24), dp(22), dp(30));
-        scroll.addView(root);
-        setContentView(scroll);
-
-        TextView title = text("Iben Recorder 8.1", 28);
-        title.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        text("Android 8.1 · WebDAV · 0.3-oreo.1", 14);
-        space(18);
-        status = text("Запис вимкнено", 21);
-        status.setTextColor(Color.parseColor(dark ? "#76D8C7" : "#136F63"));
-        details = text("", 14);
-        space(12);
-        start = button("Почати / відновити запис", this::startPressed);
-        stop = button("Зупинити й зберегти фрагмент", () -> {
-            config.wanted(false);
-            config.status("Завершення й збереження запису…", 0);
-            startForegroundService(new Intent(this, RecorderService.class).setAction(RecorderService.STOP));
-            refresh();
-        });
-
-        space(16);
-        gainLabel = text("Підсилення: +" + config.gainDb() + " дБ", 19);
-        SeekBar gain = new SeekBar(this);
-        gain.setMax(24); gain.setProgress(config.gainDb());
-        gain.setContentDescription("Підсилення запису від 0 до 24 децибелів");
-        root.addView(gain);
-        gain.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            @Override public void onProgressChanged(SeekBar bar, int value, boolean fromUser) {
-                gainLabel.setText("Підсилення: +" + value + " дБ");
-                if (fromUser) config.gainDb(value);
-            }
-            @Override public void onStartTrackingTouch(SeekBar bar) { }
-            @Override public void onStopTrackingTouch(SeekBar bar) { }
-        });
-        text("Можна змінювати під час запису. Почніть із +6 дБ. Підсилюється також фоновий шум; обмежувач пом’якшує надто гучні піки.", 13);
-        level = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
-        level.setMax(100); level.setContentDescription("Рівень звуку після підсилення"); root.addView(level);
-        levelLabel = text("Рівень звуку: —", 13);
-
-        space(20);
-        text("Налаштування запису", 19).setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        minutes = number("Тривалість файла, хвилини (1–180)", config.minutes());
-        quota = number("Ліміт локальних записів, МіБ (128–32768)", config.quotaMiB());
-        text("Якість AAC, кбіт/с · моно", 14);
-        bitrate = spinner(new String[]{"64", "96", "128", "192", "256"}, String.valueOf(config.bitrate()));
-        text("Частота дискретизації, Гц", 14);
-        sampling = spinner(new String[]{"44100", "48000"}, String.valueOf(config.sampleRate()));
-        cleanup = toggle("При ліміті видаляти найстаріші передані записи", config.deleteOldest());
-        text("Очищення дозволене лише після перевіреної WebDAV-передачі. Якщо місце заповнене непереданими файлами, запис чекатиме його звільнення.", 13);
-        boot = toggle("Відновлювати активний запис після перезавантаження", config.resumeAtBoot());
-        text("На зашифрованому телефоні може знадобитися перше розблокування після запуску системи.", 13);
-        save = button("Зберегти налаштування", () -> { if (saveSettings()) toast("Налаштування збережено"); });
-
-        space(20);
-        text("Nextcloud", 19).setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        cloudStatus = text("", 14);
-        button("Підключення Nextcloud (WebDAV)", () -> startActivity(new Intent(this, CloudActivity.class)));
-        text("Готові локальні файли", 19).setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        text(RecordingFiles.publicDirectory().getAbsolutePath(), 14).setTextIsSelectable(true);
-        text("Тут з’являються лише завершені файли .m4a. Передачею керує сам реєстратор.", 13);
-        button("Скопіювати шлях", () -> {
-            getSystemService(ClipboardManager.class).setPrimaryClip(ClipData.newPlainText("Папка записів",
-                    RecordingFiles.publicDirectory().getAbsolutePath()));
-            toast("Шлях скопійовано");
-        });
-        button("Налаштування економії батареї", () -> {
-            try { startActivity(new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)); }
-            catch (RuntimeException e) { toast("Відкрийте системні налаштування батареї вручну"); }
-        });
-        button("Журнал роботи", () -> {
-            TextView log = new TextView(this);
-            log.setPadding(dp(16), dp(12), dp(16), dp(12));
-            log.setText(AppLog.read(this));
-            log.setTextIsSelectable(true);
-            log.setTextSize(12);
-            ScrollView box = new ScrollView(this);
-            box.addView(log);
-            new AlertDialog.Builder(this).setTitle("Журнал").setView(box).setPositiveButton("Закрити", null).show();
-        });
-        space(12);
-        text("Тема", 19).setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        String[] themeOptions = {"Як у системі", "Світла", "Темна"};
-        Spinner theme = spinner(themeOptions, themeOptions[Math.max(0, Math.min(2, config.theme()))]);
-        theme.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-            @Override public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-                if (position != config.theme()) { config.theme(position); recreate(); }
-            }
-            @Override public void onNothingSelected(AdapterView<?> parent) { }
-        });
-        text("Тему можна змінювати під час запису.", 13);
-        if (Build.VERSION.SDK_INT != Build.VERSION_CODES.O_MR1)
-            text("Цей прототип працює лише на Android 8.1. На цьому пристрої запис вимкнено.", 15).setTextColor(Color.RED);
-    }
-
-    private boolean saveSettings() {
-        try {
-            config.save(Integer.parseInt(minutes.getText().toString().trim()),
-                    Integer.parseInt(bitrate.getSelectedItem().toString()),
-                    Integer.parseInt(sampling.getSelectedItem().toString()),
-                    Integer.parseInt(quota.getText().toString().trim()), cleanup.isChecked(), boot.isChecked());
-            return true;
-        } catch (Exception e) { toast(e.getMessage() == null ? "Перевірте числові значення" : e.getMessage()); return false; }
-    }
-
-    private void startPressed() {
-        if (Build.VERSION.SDK_INT != Build.VERSION_CODES.O_MR1) { toast("Потрібен Android 8.1"); return; }
-        if (!config.wanted() && !saveSettings()) return;
-        for (String permission : PERMISSIONS) {
-            if (checkSelfPermission(permission) != PackageManager.PERMISSION_GRANTED) {
-                requestPermissions(PERMISSIONS, PERMISSION_REQUEST);
-                return;
-            }
+        getWindow().setStatusBarColor(ui.background); getWindow().setNavigationBarColor(ui.background);
+        LinearLayout root = ui.column(); root.setBackgroundColor(ui.background);
+        TextView brand = ui.text(root, "Iben Recorder", 23, ui.ink);
+        brand.setTypeface(Typeface.DEFAULT, Typeface.BOLD); brand.setPadding(ui.dp(22), ui.dp(16), ui.dp(22), ui.dp(10));
+        FrameLayout body = new FrameLayout(this); root.addView(body, new LinearLayout.LayoutParams(-1, 0, 1));
+        listen = new ListenPanel(this, ui, config); pages[0] = listen.view;
+        pages[1] = recordPage();
+        settings = new SettingsPanel(this, ui, config, state); pages[2] = settings.view;
+        for (View page : pages) body.addView(page, new FrameLayout.LayoutParams(-1, -1));
+        LinearLayout bar = ui.row(); bar.setPadding(ui.dp(8), ui.dp(4), ui.dp(8), ui.dp(6)); root.addView(bar);
+        String[] labels = {I18n.s("listen"), I18n.s("record"), I18n.s("settings")};
+        for (int i = 0; i < 3; i++) {
+            final int index = i;
+            tabs[i] = ui.button(null, labels[i], () -> tab(index), false); tabs[i].setTextSize(13);
+            bar.addView(tabs[i], new LinearLayout.LayoutParams(0, ui.dp(52), 1));
         }
-        startForegroundService(new Intent(this, RecorderService.class).setAction(RecorderService.START));
+        setContentView(root);
+        int selected = state != null ? state.getInt("tab", 1) : getIntent().getIntExtra("tab", config.prefs.getInt("last_tab", 1));
+        tab(Math.max(0, Math.min(2, selected))); refresh();
     }
-
+    private View recordPage() {
+        ScrollView scroll = new ScrollView(this); scroll.setFillViewport(true);
+        LinearLayout page = ui.column(); page.setPadding(ui.dp(16), ui.dp(12), ui.dp(16), ui.dp(12)); scroll.addView(page);
+        LinearLayout main = ui.card(page);
+        status = ui.text(main, "", 15, ui.accent); status.setGravity(Gravity.CENTER);
+        duration = ui.text(main, "00:00:00", 43, ui.ink); duration.setGravity(Gravity.CENTER);
+        duration.setTypeface(Typeface.create("sans-serif-light", Typeface.NORMAL));
+        ui.text(main, I18n.s("current_segment"), 12, ui.muted).setGravity(Gravity.CENTER);
+        record = ui.button(main, I18n.s("start_recording"), () -> {
+            if (config.wanted()) { ScheduleManager.manualStop(this); refresh(); }
+            else recordingPermission(() -> {
+                if (Build.VERSION.SDK_INT != 27) { ui.toast(I18n.s("android81")); return; }
+                listen.pause(); ScheduleManager.manualStart(this); refresh();
+            });
+        }, true);
+        details = ui.text(main, "", 13, ui.muted);
+        LinearLayout sound = ui.card(page);
+        ui.title(sound, I18n.s("sound"));
+        levelLabel = ui.text(sound, "", 14, ui.ink);
+        level = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
+        level.setMax(100); sound.addView(level, new LinearLayout.LayoutParams(-1, ui.dp(12)));
+        level.setContentDescription(I18n.s("level"));
+        gainLabel = ui.text(sound, "", 16, ui.ink);
+        SeekBar gain = new SeekBar(this); gain.setMax(24); gain.setProgress(config.gainDb()); sound.addView(gain);
+        gain.setContentDescription(I18n.s("gain_accessibility"));
+        gain.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override public void onProgressChanged(SeekBar b, int value, boolean fromUser) {
+                if (fromUser) config.gainDb(value); gainLabel.setText(I18n.s("gain", value));
+            }
+            @Override public void onStartTrackingTouch(SeekBar b) { }
+            @Override public void onStopTrackingTouch(SeekBar b) { }
+        });
+        ui.text(sound, I18n.s("gain_hint"), 12, ui.muted);
+        input = ui.text(sound, "", 12, ui.muted);
+        LinearLayout storage = ui.card(page);
+        ui.title(storage, "Nextcloud"); cloud = ui.text(storage, "", 13, ui.muted);
+        ui.text(page, I18n.s("record_manual_hint"), 12, ui.muted);
+        if (Build.VERSION.SDK_INT != 27) ui.text(page, I18n.s("android81"), 15, ui.red);
+        return scroll;
+    }
+    private void tab(int index) {
+        listen.visible(index == 0 && resumed);
+        currentTab = index;
+        for (int i = 0; i < 3; i++) {
+            pages[i].setVisibility(i == index ? View.VISIBLE : View.GONE);
+            tabs[i].setBackgroundTintList(android.content.res.ColorStateList.valueOf(i == index ? ui.accent : ui.pale));
+            tabs[i].setTextColor(i == index ? ui.background : ui.accent);
+            tabs[i].setSelected(i == index);
+        }
+        config.prefs.edit().putInt("last_tab", index).apply();
+        if (index == 0 && resumed) listen.load();
+        if (index == 2) settings.refresh();
+    }
+    @Override protected void onNewIntent(Intent intent) { super.onNewIntent(intent); setIntent(intent); if (intent.hasExtra("tab")) tab(intent.getIntExtra("tab", 1)); }
+    @Override protected void onSaveInstanceState(Bundle state) {
+        super.onSaveInstanceState(state); state.putInt("tab", currentTab); settings.saveDraft(state);
+    }
+    void recordingPermission(Runnable action) { permission(new String[]{Manifest.permission.RECORD_AUDIO, Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE}, action); }
+    void storagePermission(Runnable action) { permission(new String[]{Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE}, action); }
+    private void permission(String[] permissions, Runnable action) {
+        for (String p : permissions) if (checkSelfPermission(p) != PackageManager.PERMISSION_GRANTED) {
+            if (afterPermission != null) return;
+            afterPermission = action; requestedPermissions = permissions; requestPermissions(permissions, 100); return;
+        }
+        action.run();
+    }
     @Override public void onRequestPermissionsResult(int request, String[] permissions, int[] results) {
         super.onRequestPermissionsResult(request, permissions, results);
-        if (request != PERMISSION_REQUEST) return;
-        for (String permission : PERMISSIONS) {
-            if (checkSelfPermission(permission) != PackageManager.PERMISSION_GRANTED) {
-                toast("Для запису потрібні дозволи на мікрофон і файли");
-                return;
-            }
+        if (request != 100 || afterPermission == null) return;
+        Runnable action = afterPermission; afterPermission = null;
+        for (String p : requestedPermissions) if (checkSelfPermission(p) != PackageManager.PERMISSION_GRANTED) {
+            ui.toast(I18n.s("permission_required")); return;
         }
-        startPressed();
+        action.run();
     }
-
-    private final Runnable refreshLoop = new Runnable() {
-        @Override public void run() { refresh(); timer.postDelayed(this, 1000L); }
+    private final Runnable tick = new Runnable() {
+        @Override public void run() {
+            long now = android.os.SystemClock.elapsedRealtime();
+            if (now - refreshed >= 1000) { refreshed = now; refresh(); }
+            if (currentTab == 0) listen.tick(); timer.postDelayed(this, 250);
+        }
     };
-
-    @Override public void onResume() { super.onResume(); timer.post(refreshLoop); SyncScheduler.kick(this); }
-    @Override public void onPause() { timer.removeCallbacksAndMessages(null); super.onPause(); }
-
+    @Override public void onResume() {
+        super.onResume(); resumed = true; listen.visible(currentTab == 0); timer.post(tick); SyncScheduler.kick(this); ScheduleManager.reconcile(this, true);
+        if (currentTab == 0) listen.load();
+    }
+    @Override public void onPause() { resumed = false; timer.removeCallbacks(tick); listen.suspend(); super.onPause(); }
+    @Override public void onDestroy() { listen.destroy(); super.onDestroy(); }
+    void silenceChanged() { listen.thresholdChanged(); }
     private void refresh() {
-        boolean wanted = config.wanted();
-        long heartbeat = config.prefs.getLong("heartbeat", 0);
-        boolean active = config.prefs.getBoolean("engine_active", false);
-        boolean stale = (wanted || active) && System.currentTimeMillis() - heartbeat > 90000L;
-        status.setText(stale ? "Немає свіжого стану — перевірте запис" : config.prefs.getString("status", "Запис вимкнено"));
-        long seconds = !active || stale ? 0 : config.prefs.getLong("segment_ms", 0) / 1000L;
-        long used = config.prefs.getLong("used_bytes", 0);
-        long free = config.prefs.getLong("free_bytes", 0);
-        details.setText(String.format(Locale.ROOT,
-                "Поточний фрагмент: %02d:%02d:%02d\nЗаписи: %.0f / %d МіБ · вільно: %.0f МіБ\nЗавершується файлів: %d",
-                seconds / 3600L, (seconds / 60L) % 60L, seconds % 60L,
-                used / (double) StoragePolicy.MIB, config.quotaMiB(), free / (double) StoragePolicy.MIB,
-                active ? config.prefs.getInt("finishing", 0) : 0));
-        int peak = active && !stale ? config.prefs.getInt("peak", 0) : 0;
-        level.setProgress(peak);
-        levelLabel.setText(active && !stale ? "Рівень звуку: " + peak + "%"
-                + (config.prefs.getBoolean("limiting", false) ? " · обмеження піків" : "") : "Рівень звуку: —");
-        for (View view : new View[]{minutes, quota, bitrate, sampling, cleanup, boot, save}) view.setEnabled(!wanted && (!active || stale));
-        start.setEnabled(Build.VERSION.SDK_INT == Build.VERSION_CODES.O_MR1 && (!active || stale));
-        stop.setEnabled(wanted);
-        cloudStatus.setText(new CloudSettings(this).prefs.getString("status", "WebDAV ще не налаштовано; непередані файли захищені"));
+        boolean wanted = config.wanted(), engine = config.prefs.getBoolean("engine_active", false);
+        boolean stale = (wanted || engine) && System.currentTimeMillis() - config.prefs.getLong("heartbeat", 0) > 90000;
+        boolean active = engine && !stale;
+        status.setText(stale ? I18n.s("stale") : I18n.tr(config.prefs.getString("status", "Запис вимкнено")));
+        duration.setText(Ui.clock(active ? config.prefs.getLong("segment_ms", 0) : 0));
+        record.setText(I18n.s(wanted ? "stop_save" : engine && !stale ? "saving" : "start_recording"));
+        record.setEnabled(Build.VERSION.SDK_INT == 27 && (wanted || !active));
+        long used = config.prefs.getLong("used_bytes", 0), free = config.prefs.getLong("free_bytes", 0);
+        details.setText(I18n.s("storage_info", used / 1048576d, config.quotaMiB(), free / 1048576d)
+                + "\n" + I18n.s("format_info", config.minutes(), config.bitrate(), config.sampleRate())
+                + (active && config.prefs.getInt("finishing", 0) > 0 ? "\n" + I18n.s("finishing", config.prefs.getInt("finishing", 0)) : ""));
+        int peak = active ? config.prefs.getInt("peak", 0) : 0; level.setProgress(peak);
+        level.setProgressTintList(android.content.res.ColorStateList.valueOf(peak >= 95 ? ui.red : ui.accent));
+        float raw = active ? config.prefs.getFloat("peak_raw", peak / 100f) : 0;
+        String db = raw > 0 ? String.format(Locale.ROOT, "%.0f dBFS", 20 * Math.log10(raw)) : "−∞ dBFS";
+        levelLabel.setText(I18n.s("level_value", peak, db) + (active && config.prefs.getBoolean("limiting", false) ? " · " + I18n.s("limiter") : ""));
+        gainLabel.setText(I18n.s("gain", config.gainDb()));
+        String route = config.prefs.getString("input_route", "");
+        input.setText(I18n.s("actual_input") + ": " + (active && !route.isEmpty() ? AudioInputs.labelKey(route) : "—"));
+        cloud.setText(I18n.tr(new CloudSettings(this).prefs.getString("status", "Підключення ще не налаштоване")));
+        if (currentTab == 2) settings.refresh();
     }
-
-    private TextView text(String value, int size) {
-        TextView view = new TextView(this);
-        view.setText(value); view.setTextSize(size); view.setTextColor(foreground);
-        view.setPadding(0, dp(5), 0, dp(7)); root.addView(view);
-        return view;
-    }
-    private EditText number(String label, int value) {
-        text(label, 14);
-        EditText input = new EditText(this);
-        input.setSingleLine(true); input.setInputType(InputType.TYPE_CLASS_NUMBER);
-        input.setText(String.valueOf(value)); root.addView(input);
-        return input;
-    }
-    private Spinner spinner(String[] options, String selected) {
-        Spinner view = new Spinner(this);
-        ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, options);
-        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-        view.setAdapter(adapter);
-        for (int i = 0; i < options.length; i++) if (options[i].equals(selected)) view.setSelection(i);
-        root.addView(view); return view;
-    }
-    private Switch toggle(String label, boolean checked) {
-        Switch view = new Switch(this);
-        view.setText(label); view.setTextSize(14); view.setChecked(checked);
-        view.setPadding(0, dp(12), 0, dp(12)); root.addView(view); return view;
-    }
-    private Button button(String label, Runnable action) {
-        Button view = new Button(this);
-        view.setText(label); view.setAllCaps(false); view.setOnClickListener(v -> action.run());
-        root.addView(view, new LinearLayout.LayoutParams(-1, -2)); return view;
-    }
-    private void space(int size) { View view = new View(this); root.addView(view, new LinearLayout.LayoutParams(1, dp(size))); }
-    private int dp(int value) { return (int) (value * getResources().getDisplayMetrics().density + 0.5f); }
-    private void toast(String value) { Toast.makeText(this, value, Toast.LENGTH_LONG).show(); }
 }

@@ -2,6 +2,7 @@ package ua.iben.recorder;
 
 import android.media.AudioFormat;
 import android.media.AudioRecord;
+import android.media.AudioDeviceInfo;
 import android.media.MediaCodec;
 import android.media.MediaCodecInfo;
 import android.media.MediaFormat;
@@ -41,6 +42,7 @@ final class ContinuousRecorder {
     private volatile boolean encoderEnded;
     private volatile boolean writerEnded;
     private volatile AudioRecord audio;
+    private AudioDeviceInfo preferred;
     private volatile long segmentStart;
     private volatile long segmentUs;
     private volatile long lastCapture = SystemClock.elapsedRealtime();
@@ -89,9 +91,14 @@ final class ContinuousRecorder {
             if (stopRequested) return;
             int min = AudioRecord.getMinBufferSize(rate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT);
             if (min <= 0) throw new IOException("Мікрофон не підтримує обрану частоту");
-            audio = new AudioRecord(MediaRecorder.AudioSource.MIC, rate, AudioFormat.CHANNEL_IN_MONO,
+            AudioInputs.validateSource(config.context, config.source());
+            if (config.context.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)
+                    != android.content.pm.PackageManager.PERMISSION_GRANTED)
+                throw new IOException("Потрібні дозволи на мікрофон і файли");
+            audio = new AudioRecord(config.source(), rate, AudioFormat.CHANNEL_IN_MONO,
                     AudioFormat.ENCODING_PCM_16BIT, Math.max(min * 4, rate * 2));
             if (audio.getState() != AudioRecord.STATE_INITIALIZED) throw new IOException("Не вдалося відкрити мікрофон");
+            preferred = AudioInputs.select(config, audio);
             MediaFormat format = MediaFormat.createAudioFormat(MediaFormat.MIMETYPE_AUDIO_AAC, rate, 1);
             format.setInteger(MediaFormat.KEY_AAC_PROFILE, MediaCodecInfo.CodecProfileLevel.AACObjectLC);
             format.setInteger(MediaFormat.KEY_BIT_RATE, bitrate * 1000);
@@ -110,7 +117,8 @@ final class ContinuousRecorder {
             capture = new Thread(this::capture, "iben-microphone");
             writer.start(); capture.start();
             encode(codec);
-        } catch (Exception e) { fail(e); }
+        } catch (SecurityException e) { fail(new IOException("Потрібні дозволи на мікрофон і файли", e)); }
+        catch (Exception e) { fail(e); }
         finally {
             stop();
             join(capture);
@@ -137,6 +145,7 @@ final class ContinuousRecorder {
     private void capture() {
         try {
             Process.setThreadPriority(Process.THREAD_PRIORITY_AUDIO);
+            long routeChecked = 0;
             while (!stopRequested) {
                 short[] samples = new short[PCM_SAMPLES];
                 int count = audio.read(samples, 0, samples.length, AudioRecord.READ_BLOCKING);
@@ -145,6 +154,14 @@ final class ContinuousRecorder {
                     throw new IOException("Помилка читання мікрофона: " + count);
                 }
                 if (count == 0) continue;
+                long routeNow = SystemClock.elapsedRealtime();
+                if (routeNow - routeChecked >= 1000L) {
+                    routeChecked = routeNow;
+                    AudioDeviceInfo routed = audio.getRoutedDevice();
+                    if (preferred != null && (routed == null || routed.getId() != preferred.getId()))
+                        throw new IOException("Прошивка не використовує обраний аудіовхід; запис призупинено");
+                    config.prefs.edit().putString("input_route", routed == null ? "" : AudioInputs.key(routed)).apply();
+                }
                 gain.process(samples, count, config.gainDb());
                 if (count != samples.length) {
                     short[] shortBlock = new short[count];

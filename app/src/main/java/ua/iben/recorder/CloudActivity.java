@@ -28,6 +28,7 @@ public final class CloudActivity extends Activity {
     private volatile boolean gone;
     private boolean working;
 
+    @Override protected void attachBaseContext(android.content.Context base) { super.attachBaseContext(LocaleContext.wrap(base)); }
     @Override public void onCreate(Bundle state) {
         Config config = new Config(this);
         boolean dark = config.theme() == 2 || (config.theme() == 0
@@ -48,7 +49,7 @@ public final class CloudActivity extends Activity {
         password = input("Пароль застосунку Nextcloud", "", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
         password.setSaveEnabled(false);
         password.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO);
-        password.setHint(cloud.hasSecret() ? "Збережено — порожнє поле залишає пароль" : "Створи в Nextcloud → Особисті налаштування → Безпека");
+        password.setHint(I18n.tr(cloud.hasSecret() ? "Збережено — порожнє поле залишає пароль" : "Створи в Nextcloud → Особисті налаштування → Безпека"));
         text("Заздалегідь створи папку IbenRecorder81 у вебінтерфейсі Nextcloud. Скопіюй свою WebDAV-адресу з налаштувань файлів і додай до неї назву папки. Публічне посилання «Поділитися» не підходить.", 13);
         enabled = toggle("Автоматично передавати готові записи", cloud.enabled());
         unmetered = toggle("Лише мережа без тарифікації (зазвичай Wi-Fi)", cloud.unmetered());
@@ -58,7 +59,7 @@ public final class CloudActivity extends Activity {
         text("Перевірка створює, читає й видаляє маленький тестовий файл у вибраній папці.", 13);
         testStatus = text("", 14);
         now = button("Синхронізувати зараз", () -> {
-            if (!cloud.enabled()) { testStatus.setText("Увімкни автопередачу й збережи підключення"); return; }
+            if (!cloud.enabled()) { testStatus.setText(I18n.tr("Увімкни автопередачу й збережи підключення")); return; }
             cloud.status("Очікування дозволеної мережі та запуску Android");
             SyncScheduler.restart(this); refresh();
         });
@@ -72,7 +73,7 @@ public final class CloudActivity extends Activity {
         if (working) return;
         String folder = address.getText().toString(); String login = user.getText().toString();
         String secret = password.getText().toString(); boolean active = enabled.isChecked(); boolean wifi = unmetered.isChecked();
-        busy(true); testStatus.setText("Збереження…");
+        busy(true); testStatus.setText(I18n.tr("Збереження…"));
         new Thread(() -> {
             String result;
             boolean success = false;
@@ -84,10 +85,10 @@ public final class CloudActivity extends Activity {
             final String message = result; final boolean saved = success;
             runOnUiThread(() -> {
                 if (gone) return;
-                busy(false); testStatus.setText(message);
+                busy(false); testStatus.setText(I18n.tr(message));
                 if (saved) {
                     address.setText(cloud.folder()); user.setText(cloud.username()); password.setText("");
-                    password.setHint("Збережено — порожнє поле залишає пароль");
+                    password.setHint(I18n.tr("Збережено — порожнє поле залишає пароль"));
                 }
                 refresh();
             });
@@ -97,7 +98,7 @@ public final class CloudActivity extends Activity {
         if (working) return;
         String folder = address.getText().toString(); String login = user.getText().toString();
         String typedPassword = password.getText().toString();
-        busy(true); testStatus.setText("Перевірка читання й запису…");
+        busy(true); testStatus.setText(I18n.tr("Перевірка читання й запису…"));
         new Thread(() -> {
             String result;
             try {
@@ -117,7 +118,7 @@ public final class CloudActivity extends Activity {
                 result = "Підключення працює: запис, читання, SHA-256 і видалення тестового файла перевірено. Збережи налаштування, якщо змінював їх.";
             } catch (Exception e) { result = CloudSettings.error(e); }
             final String message = result;
-            runOnUiThread(() -> { if (!gone) { busy(false); testStatus.setText(message); } });
+            runOnUiThread(() -> { if (!gone) { busy(false); testStatus.setText(I18n.tr(message)); } });
         }, "iben-webdav-test").start();
     }
     private void busy(boolean value) {
@@ -131,8 +132,8 @@ public final class CloudActivity extends Activity {
         String text = cloud.prefs.getString("status", "Підключення ще не налаштоване");
         int pending = cloud.prefs.getInt("pending", 0);
         String last = cloud.prefs.getString("last_file", "");
-        status.setText(text + "\nЗа останньою перевіркою в черзі: " + pending
-                + (last.isEmpty() ? "" : "\nОстанній підтверджений: " + last));
+        status.setText(I18n.tr(text + "\nЗа останньою перевіркою в черзі: " + pending
+                + (last.isEmpty() ? "" : "\nОстанній підтверджений: " + last)));
     }
     @Override public void onResume() { super.onResume(); timer.post(poll); }
     @Override public void onPause() { timer.removeCallbacks(poll); super.onPause(); }
@@ -142,7 +143,7 @@ public final class CloudActivity extends Activity {
         super.onDestroy();
     }
     private TextView text(String value, int size) {
-        TextView view = new TextView(this); view.setText(value); view.setTextSize(size); view.setTextColor(foreground);
+        TextView view = new TextView(this); view.setText(I18n.tr(value)); view.setTextSize(size); view.setTextColor(foreground);
         view.setPadding(0, dp(6), 0, dp(8)); root.addView(view); return view;
     }
     private EditText input(String label, String value, int type) {
@@ -150,11 +151,11 @@ public final class CloudActivity extends Activity {
         view.setText(value); root.addView(view); return view;
     }
     private Switch toggle(String label, boolean value) {
-        Switch view = new Switch(this); view.setText(label); view.setChecked(value); view.setTextSize(14);
+        Switch view = new Switch(this); view.setText(I18n.tr(label)); view.setChecked(value); view.setTextSize(14);
         view.setPadding(0, dp(12), 0, dp(12)); root.addView(view); return view;
     }
     private Button button(String label, Runnable action) {
-        Button view = new Button(this); view.setAllCaps(false); view.setText(label); view.setOnClickListener(v -> action.run());
+        Button view = new Button(this); view.setAllCaps(false); view.setText(I18n.tr(label)); view.setOnClickListener(v -> action.run());
         root.addView(view, new LinearLayout.LayoutParams(-1, -2)); return view;
     }
     private int dp(int value) { return Math.round(value * getResources().getDisplayMetrics().density); }

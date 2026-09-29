@@ -1,0 +1,153 @@
+\nЗа останньою перевіркою в черзі: 	\nQueued at last check: 	\nW kolejce podczas ostatniej kontroli: 
+\nОстанній підтверджений: 	\nLast verified: 	\nOstatni zweryfikowany: 
+ байтів)	 bytes)	 bajtów)
+ с за наявності мережі	 s when a network is available	 s po uzyskaniu dostępu do sieci
+. Повтор не раніше ніж через 	. Retry no sooner than in 	. Ponowna próba nie wcześniej niż za 
+. Повтор через 	. Retry in 	. Ponowna próba za 
+; повтор через 	; retry in 	; ponowna próba za 
+Android не прийняв завдання передачі; відкрийте застосунок повторно	Android did not accept the upload job; reopen the app	Android nie przyjął zadania przesyłania; otwórz aplikację ponownie
+WebDAV: передано й перевірено SHA-256: 	WebDAV: uploaded and SHA-256 verified: 	WebDAV: przesłano i zweryfikowano SHA-256: 
+Ім’я користувача Nextcloud	Nextcloud username	Nazwa użytkownika Nextcloud
+Автоматично передавати готові записи	Automatically upload completed recordings	Automatycznie przesyłaj gotowe nagrania
+Аудіозапис	Audio recording	Nagrywanie dźwięku
+Введіть пароль застосунку для нової адреси або користувача	Enter the app password for the new address or user	Wprowadź hasło aplikacji dla nowego adresu lub użytkownika
+Введіть пароль застосунку для цього підключення	Enter the app password for this connection	Wprowadź hasło aplikacji dla tego połączenia
+Введіть пароль застосунку повторно	Enter the app password again	Wprowadź ponownie hasło aplikacji
+Вкажіть повну HTTPS WebDAV-адресу папки та ім’я користувача	Enter the full HTTPS WebDAV folder URL and username	Podaj pełny adres HTTPS WebDAV folderu i nazwę użytkownika
+Вхідний буфер кодека надто малий	The codec input buffer is too small	Bufor wejściowy kodeka jest zbyt mały
+Готовий запис відсутній у реєстрі	The completed recording is missing from the index	Gotowego nagrania nie ma w indeksie
+Готовий локальний файл недоступний	The completed local file is unavailable	Gotowy plik lokalny jest niedostępny
+Готовий файл: 	Completed file: 	Gotowy plik: 
+Декодер змінив формат PCM	The decoder changed the PCM format	Dekoder zmienił format PCM
+Декодер не відповідає	The decoder is not responding	Dekoder nie odpowiada
+Декодер не надав формат PCM	The decoder did not provide a PCM format	Dekoder nie podał formatu PCM
+Для безперервного запису ліміт має вміщувати два фрагменти із запасом	For continuous recording, the limit must hold two segments with a margin	Do ciągłego nagrywania limit musi pomieścić dwa fragmenty z zapasem
+Для розкладу потрібні дозволи на мікрофон і файли	The schedule needs microphone and storage permissions	Harmonogram wymaga uprawnień do mikrofonu i pamięci
+Досягнуто ліміт пам’яті або вільного місця	The recording limit or free-space limit has been reached	Osiągnięto limit nagrań lub wolnego miejsca
+Журнал поки порожній.	The log is empty.	Dziennik jest pusty.
+Завантаження	Uploading	Przesyłanie
+Завершення й збереження запису…	Finishing and saving the recording…	Kończenie i zapisywanie nagrania…
+Заздалегідь створи папку IbenRecorder81 у вебінтерфейсі Nextcloud. Скопіюй свою WebDAV-адресу з налаштувань файлів і додай до неї назву папки. Публічне посилання «Поділитися» не підходить.	Create the IbenRecorder81 folder in Nextcloud first. Copy your WebDAV URL from Files settings and append the folder name. A public sharing link cannot be used here.	Najpierw utwórz folder IbenRecorder81 w Nextcloud. Skopiuj adres WebDAV z ustawień plików i dopisz nazwę folderu. Publiczny link udostępniania nie pasuje do tego pola.
+Запис вимкнено	Recording is off	Nagrywanie wyłączone
+Запис зупинено	Recording stopped	Nagrywanie zatrzymane
+Запис зупинено з помилкою: 	Recording stopped with an error: 	Nagrywanie zatrzymano z błędem: 
+Запис зупинено; файли збережено	Recording stopped; files saved	Nagrywanie zatrzymane; pliki zapisane
+Запис файла припинено	File writing stopped	Zapisywanie pliku przerwane
+Запуск безперервного аудіодвигуна	Starting continuous audio capture	Uruchamianie ciągłego nagrywania
+Зберегти підключення	Save connection	Zapisz połączenie
+Збереження…	Saving…	Zapisywanie…
+Збережено — порожнє поле залишає пароль	Saved — leave blank to keep the password	Zapisano — puste pole zachowa hasło
+Збільште ліміт пам’яті: він має вміщувати два фрагменти із запасом	Increase the storage limit: it must hold two segments with a margin	Zwiększ limit pamięci: musi pomieścić dwa fragmenty z zapasem
+Кодек змінив формат під час запису	The codec changed format while recording	Kodek zmienił format podczas nagrywania
+Кодек не встигає обробляти звук	The codec cannot keep up with audio capture	Kodek nie nadąża z przetwarzaniem dźwięku
+Кодек не відповідає під час зупинки	The codec is not responding during shutdown	Kodek nie odpowiada podczas zatrzymywania
+Кодек не завершив останній буфер	The codec did not finish the final buffer	Kodek nie zakończył ostatniego bufora
+Кодек не надав аудіо	The codec returned no audio	Kodek nie zwrócił dźwięku
+Кодек не надав вхідний буфер	The codec did not provide an input buffer	Kodek nie udostępnił bufora wejściowego
+Кодек не надав заголовок AAC	The codec did not provide an AAC header	Kodek nie udostępnił nagłówka AAC
+Кодек не підтримав обрану частоту або моно	The codec does not support the selected sample rate or mono	Kodek nie obsługuje wybranej częstotliwości lub trybu mono
+Контроль пам’яті: 	Storage check: 	Kontrola pamięci: 
+Лише мережа без тарифікації (зазвичай Wi-Fi)	Unmetered network only (usually Wi-Fi)	Tylko sieć bez limitu danych (zwykle Wi-Fi)
+Локальний запис уже недоступний	The local recording is no longer available	Nagranie lokalne nie jest już dostępne
+Локальний файл змінився	The local file changed	Plik lokalny został zmieniony
+Локальний файл змінився; його не дозволено видаляти	The local file changed; deletion is not allowed	Plik lokalny został zmieniony; usunięcie jest zabronione
+Локальний файл змінився; підтвердження не збережено	The local file changed; verification was not saved	Plik lokalny został zmieniony; potwierdzenie nie zostało zapisane
+Ліміт пам’яті: видалено 	Storage limit: deleted 	Limit pamięci: usunięto 
+Мікрофон не почав запис	The microphone did not start recording	Mikrofon nie rozpoczął nagrywania
+Мікрофон не підтримує обрану частоту	The microphone does not support the selected sample rate	Mikrofon nie obsługuje wybranej częstotliwości próbkowania
+На сервері закінчилося місце або квота	The server is out of space or quota	Na serwerze zabrakło miejsca lub limitu konta
+На сервері є інший файл із такою назвою; його не перезаписано	A different file already has this name on the server; it was not overwritten	Na serwerze istnieje inny plik o tej nazwie; nie został nadpisany
+Надайте дозвіл на сховище, запустивши запис у застосунку	Grant storage access by opening recordings or starting recording in the app	Przyznaj dostęp do pamięci, otwierając listę lub rozpoczynając nagrywanie w aplikacji
+Не вдалося вибрати аудіовхід	Could not select the audio input	Nie udało się wybrać wejścia audio
+Не вдалося видалити старий фрагмент	Could not delete an old segment	Nie udało się usunąć starego fragmentu
+Не вдалося відкрити мікрофон	Could not open the microphone	Nie udało się otworzyć mikrofonu
+Не вдалося відкрити наступний M4A	Could not open the next M4A file	Nie udało się otworzyć następnego pliku M4A
+Не вдалося запланувати WebDAV: 	Could not schedule WebDAV: 	Nie udało się zaplanować WebDAV: 
+Не вдалося запланувати передачу; перевірте налаштування фонової роботи	Could not schedule upload; check background settings	Nie udało się zaplanować przesyłania; sprawdź ustawienia pracy w tle
+Не вдалося запустити сервіс запису: 	Could not start the recording service: 	Nie udało się uruchomić usługi nagrywania: 
+Не вдалося зберегти налаштування	Could not save settings	Nie udało się zapisać ustawień
+Не вдалося зберегти підключення	Could not save the connection	Nie udało się zapisać połączenia
+Не вдалося зберегти розклад	Could not save the schedule	Nie udało się zapisać harmonogramu
+Не вдалося зберегти шкалу	Could not save the waveform	Nie udało się zapisać wykresu
+Не вдалося зберегти ідентифікатор	Could not save the recording identifier	Nie udało się zapisać identyfikatora nagrania
+Не вдалося знайти сервер; перевірте мережу й адресу	Could not find the server; check the network and URL	Nie znaleziono serwera; sprawdź sieć i adres
+Не вдалося опублікувати файл: 	Could not publish the file: 	Nie udało się udostępnić gotowego pliku: 
+Не вдалося приховати робочу папку	Could not hide the working folder	Nie udało się ukryć folderu roboczego
+Не вдалося прочитати журнал: 	Could not read the log: 	Nie udało się odczytać dziennika: 
+Не вдалося прочитати збережений пароль. Введіть пароль застосунку повторно	Could not read the saved password. Enter the app password again	Nie udało się odczytać zapisanego hasła. Wprowadź ponownie hasło aplikacji
+Не вдалося створити кеш шкали	Could not create the waveform cache	Nie udało się utworzyć pamięci podręcznej wykresu
+Не вдалося створити папку: 	Could not create folder: 	Nie udało się utworzyć folderu: 
+Не вдалося створити робочий файл	Could not create the working file	Nie udało się utworzyć pliku roboczego
+Недостатньо місця для наступного фрагмента	Not enough space for the next segment	Za mało miejsca na następny fragment
+Недостатньо місця для фрагмента; очікування вільної пам’яті	Not enough space for a segment; waiting for free storage	Za mało miejsca na fragment; oczekiwanie na wolną pamięć
+Незавершений файл ізольовано у .temp	An unfinished file was isolated in .temp	Niedokończony plik odizolowano w .temp
+Некоректна назва запису	Invalid recording filename	Nieprawidłowa nazwa nagrania
+Некоректне ім’я віддаленого файла	Invalid remote filename	Nieprawidłowa nazwa pliku zdalnego
+Некоректний ідентифікатор запису	Invalid recording identifier	Nieprawidłowy identyfikator nagrania
+Немає декодованого звуку	No decoded audio	Brak zdekodowanego dźwięku
+Немає доступу до папки записів	Cannot access the recording folder	Brak dostępu do folderu nagrań
+Немає доступу до папки; перевірте дозволи Nextcloud	Cannot access the folder; check Nextcloud permissions	Brak dostępu do folderu; sprawdź uprawnienia Nextcloud
+Немає доступу до старої робочої папки	Cannot access the old working folder	Brak dostępu do starego folderu roboczego
+Немає нового аудіо понад 30 секунд	No new audio for more than 30 seconds	Brak nowego dźwięku przez ponad 30 sekund
+Немає формату AAC	No AAC format	Brak formatu AAC
+Неправильний логін або пароль застосунку	Incorrect username or app password	Nieprawidłowy login lub hasło aplikacji
+Непідтримуваний формат PCM	Unsupported PCM format	Nieobsługiwany format PCM
+Обраний аудіовхід від’єднаний; очікування підключення	The selected audio input is disconnected; waiting for reconnection	Wybrane wejście audio jest odłączone; oczekiwanie na ponowne podłączenie
+Обраний режим мікрофона не підтримується	The selected microphone mode is not supported	Wybrany tryb mikrofonu nie jest obsługiwany
+Очікування дозволеної мережі та запуску Android	Waiting for an allowed network and Android scheduling	Oczekiwanie na dozwoloną sieć i uruchomienie przez Androida
+Очікування передачі	Waiting to upload	Oczekiwanie na przesłanie
+Папку не знайдено. Створіть її в Nextcloud і перевірте WebDAV-адресу	Folder not found. Create it in Nextcloud and check the WebDAV URL	Nie znaleziono folderu. Utwórz go w Nextcloud i sprawdź adres WebDAV
+Папку призначення змінено; попереднє підтвердження не застосовано	The destination changed; the previous verification was not applied	Zmieniono folder docelowy; poprzednie potwierdzenie nie zostało zastosowane
+Пароль застосунку Nextcloud	Nextcloud app password	Hasło aplikacji Nextcloud
+Перевірити підключення	Test connection	Sprawdź połączenie
+Перевірка SHA-256	Verifying SHA-256	Weryfikacja SHA-256
+Перевірка створює, читає й видаляє маленький тестовий файл у вибраній папці.	The test creates, reads and deletes a small test file in the selected folder.	Test tworzy, odczytuje i usuwa mały plik testowy w wybranym folderze.
+Перевірка читання й запису…	Testing reading and writing…	Sprawdzanie odczytu i zapisu…
+Перевірте інтервал, якість і ліміт пам’яті	Check the interval, quality and storage limit	Sprawdź przedział, jakość i limit pamięci
+Передача не завершена (	Upload did not finish (	Przesyłanie nie zostało zakończone (
+Передача працює, але сервер не надав ETag: тестовий файл залишено у папці	Upload works, but the server returned no ETag: the test file remains in the folder	Przesyłanie działa, ale serwer nie zwrócił ETag: plik testowy pozostał w folderze
+Передача працює, але тестовий файл не видалено (HTTP 	Upload works, but the test file was not deleted (HTTP 	Przesyłanie działa, ale plik testowy nie został usunięty (HTTP 
+Передача: 	Uploading: 	Przesyłanie: 
+Передачу вимкнено; непередані файли захищені	Upload disabled; unverified files are protected	Przesyłanie wyłączone; niezweryfikowane pliki są chronione
+Передачу призупинено	Upload paused	Przesyłanie wstrzymane
+Передачу призупинено Android; очікування дозволеної мережі та фонової роботи	Android paused upload; waiting for an allowed network and background execution	Android wstrzymał przesyłanie; oczekiwanie na dozwoloną sieć i pracę w tle
+Повернутися до запису	Back to the recorder	Wróć do rejestratora
+Повна HTTPS WebDAV-адреса папки	Full HTTPS WebDAV folder URL	Pełny adres HTTPS WebDAV folderu
+Помилка HTTPS: перевірте сертифікат сервера й дату телефона	HTTPS error: check the server certificate and phone date	Błąd HTTPS: sprawdź certyfikat serwera i datę telefonu
+Помилка запису: 	Recording error: 	Błąd nagrywania: 
+Помилка передачі	Upload error	Błąd przesyłania
+Помилка читання мікрофона: 	Microphone read error: 	Błąd odczytu mikrofonu: 
+Потрібен Android 8.1	Android 8.1 is required	Wymagany Android 8.1
+Потрібен пароль застосунку Nextcloud	A Nextcloud app password is required	Wymagane hasło aplikacji Nextcloud
+Потрібні дозволи на мікрофон і файли	Microphone and storage permissions are required	Wymagane uprawnienia do mikrofonu i pamięci
+Призупинити передачу	Pause uploads	Wstrzymaj przesyłanie
+Прошивка не використовує обраний аудіовхід; запис призупинено	The firmware is not using the selected audio input; recording paused	System nie używa wybranego wejścia audio; nagrywanie wstrzymane
+Пряме завантаження готових записів. Застосунок Nextcloud на телефоні не потрібний.	Upload completed recordings directly. The Nextcloud app is not needed on the phone.	Przesyłaj gotowe nagrania bezpośrednio. Aplikacja Nextcloud na telefonie nie jest potrzebna.
+Підготовка	Preparing	Przygotowanie
+Підготовка або завершення аудіодвигуна…	Starting or finishing audio capture…	Uruchamianie lub kończenie nagrywania…
+Підготовка запису…	Preparing to record…	Przygotowanie nagrywania…
+Підготовка…	Preparing…	Przygotowanie…
+Підключення збережено	Connection saved	Połączenie zapisane
+Підключення працює: запис, читання, SHA-256 і видалення тестового файла перевірено. Збережи налаштування, якщо змінював їх.	Connection works: writing, reading, SHA-256 and test-file deletion verified. Save settings if you changed them.	Połączenie działa: zapis, odczyt, SHA-256 i usuwanie pliku testowego sprawdzone. Zapisz ustawienia, jeśli je zmieniono.
+Підключення ще не налаштоване	Connection not configured yet	Połączenie nie jest jeszcze skonfigurowane
+Після передачі файл відсутній на сервері	The file is missing from the server after upload	Po przesłaniu pliku nie ma na serwerze
+Після передачі файл читається назад і звіряється SHA-256. Це додає вхідний трафік приблизно в розмір запису. Непередані файли захищені від очищення навіть після вимкнення передачі.	After upload, the file is read back and SHA-256 is checked. This adds incoming traffic roughly equal to the recording size. Unverified files stay protected even if uploads are disabled.	Po przesłaniu plik jest ponownie odczytywany i sprawdzany przez SHA-256. Dodaje to ruch przychodzący zbliżony do rozmiaru nagrania. Niezweryfikowane pliki pozostają chronione także po wyłączeniu przesyłania.
+Сервер відхилив розмір файла; зменште інтервал запису або збільште ліміт запиту на сервері	The server rejected the file size; shorten recording segments or increase the server request limit	Serwer odrzucił rozmiar pliku; skróć fragmenty lub zwiększ limit żądania na serwerze
+Сервер не відповів вчасно; передачу буде повторено	The server timed out; upload will be retried	Serwer nie odpowiedział na czas; przesyłanie zostanie ponowione
+Сервер не підтвердив операцію	The server did not confirm the operation	Serwer nie potwierdził operacji
+Сервер обмежив частоту запитів	The server rate-limited requests	Serwer ograniczył częstotliwość żądań
+Сервер перенаправляє запит. Вкажіть кінцеву HTTPS WebDAV-адресу	The server redirects the request. Enter the final HTTPS WebDAV URL	Serwer przekierowuje żądanie. Podaj końcowy adres HTTPS WebDAV
+Синхронізувати зараз	Sync now	Synchronizuj teraz
+Стан безперервного запису та кнопка зупинки	Continuous recording status and stop button	Stan ciągłego nagrywania i przycisk zatrzymania
+Створи в Nextcloud → Особисті налаштування → Безпека	Create in Nextcloud → Personal settings → Security	Utwórz w Nextcloud → Ustawienia osobiste → Bezpieczeństwo
+Сторонній робочий шлях	Unexpected working path	Nieoczekiwana ścieżka robocza
+Сторонній шлях запису	Unexpected recording path	Nieoczekiwana ścieżka nagrania
+Сховище не встигає приймати аудіо	Storage cannot keep up with audio capture	Pamięć nie nadąża z zapisywaniem dźwięku
+Сховище телефона недоступне	Phone storage is unavailable	Pamięć telefonu jest niedostępna
+Триває запис	Recording	Nagrywanie
+У файлі немає аудіодоріжки	The file has no audio track	Plik nie ma ścieżki dźwiękowej
+Увімкни автопередачу й збережи підключення	Enable automatic uploads and save the connection	Włącz automatyczne przesyłanie i zapisz połączenie
+Усі готові записи передано й перевірено	All completed recordings uploaded and verified	Wszystkie gotowe nagrania przesłano i zweryfikowano
+Файл заблокований сервером; спробу буде повторено	The server locked the file; the operation will be retried	Serwer zablokował plik; próba zostanie ponowiona
+Фрагмент не має читабельного аудіо; залишено у .temp	The segment has no readable audio; left in .temp	Fragment nie ma odczytywalnego dźwięku; pozostawiono go w .temp
+Черга завершення файлів переповнена	The file finalization queue is full	Kolejka finalizacji plików jest pełna

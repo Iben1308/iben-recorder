@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 project_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+python3 "$project_dir/tools/generate_strings.py" --check
+python3 "$project_dir/tools/check_translations.py"
 classes_dir="$(mktemp -d)"
 trap 'rm -rf -- "$classes_dir"' EXIT
 java --module jdk.compiler/com.sun.tools.javac.Main --release 8 -d "$classes_dir" \
@@ -13,10 +15,15 @@ java --module jdk.compiler/com.sun.tools.javac.Main --release 8 -d "$classes_dir
   "$project_dir/app/src/main/java/ua/iben/recorder/TransferPolicy.java" \
   "$project_dir/tools/StoragePolicyTest.java" \
   "$project_dir/tools/AudioCoreTest.java" \
-  "$project_dir/tools/WebDavTest.java"
+  "$project_dir/tools/WebDavTest.java" \
+  "$project_dir/app/src/main/java/ua/iben/recorder/WeeklySchedule.java" \
+  "$project_dir/app/src/main/java/ua/iben/recorder/AudioEnvelope.java" \
+  "$project_dir/app/src/main/java/ua/iben/recorder/I18n.java" \
+  "$project_dir/tools/FeaturesTest.java"
 java -cp "$classes_dir" ua.iben.recorder.StoragePolicyTest
 java -cp "$classes_dir" ua.iben.recorder.AudioCoreTest
 java --add-modules jdk.httpserver -cp "$classes_dir" ua.iben.recorder.WebDavTest
+java -cp "$classes_dir" ua.iben.recorder.FeaturesTest
 java --module jdk.compiler/com.sun.tools.javac.Main -d "$classes_dir" "$project_dir/tools/JavaSyntaxCheck.java"
 mapfile -t java_sources < <(find "$project_dir/app/src/main/java" -name '*.java' -type f)
 java -cp "$classes_dir" JavaSyntaxCheck "${java_sources[@]}"

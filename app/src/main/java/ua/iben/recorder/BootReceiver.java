@@ -13,14 +13,9 @@ public final class BootReceiver extends BroadcastReceiver {
                 && !Intent.ACTION_MY_PACKAGE_REPLACED.equals(action)) return;
         Config config = new Config(context);
         if (Build.VERSION.SDK_INT == Build.VERSION_CODES.O_MR1) SyncScheduler.kick(context);
-        if (Build.VERSION.SDK_INT == Build.VERSION_CODES.O_MR1 && config.wanted() && config.resumeAtBoot()) {
-            try {
-                context.startForegroundService(new Intent(context, RecorderService.class));
-                AppLog.write(context, "Запит відновлення після запуску системи / оновлення");
-            } catch (RuntimeException e) {
-                config.status("Не вдалося відновити запис: " + e.getMessage(), 0);
-                AppLog.write(context, "Автозапуск: " + e.getMessage());
-            }
+        if (Build.VERSION.SDK_INT == 27) {
+            if (!config.resumeAtBoot() && !"schedule".equals(config.origin())) config.wanted(false);
+            ScheduleManager.reconcile(context, true);
         }
     }
 }
