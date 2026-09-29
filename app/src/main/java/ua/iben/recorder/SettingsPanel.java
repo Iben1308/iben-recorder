@@ -73,7 +73,7 @@ final class SettingsPanel {
         ui.text(audio, I18n.s("input_hint"), 12, ui.muted);
         cleanup = ui.toggle(audio, I18n.s("cleanup"), draft == null ? config.deleteOldest() : draft.getBoolean("draft_cleanup", config.deleteOldest()));
         ui.text(audio, I18n.s("cleanup_hint"), 12, ui.muted);
-        boot = ui.toggle(audio, I18n.s("restore_manual"), draft == null ? config.resumeAtBoot() : draft.getBoolean("draft_boot", config.resumeAtBoot()));
+        boot = ui.toggle(audio, I18n.s(Platform.armedService() ? "boot_remind" : "restore_manual"), draft == null ? config.resumeAtBoot() : draft.getBoolean("draft_boot", config.resumeAtBoot()));
         Button save = ui.button(audio, I18n.s("save_record_settings"), this::saveSettings, true);
         for (View control : new View[]{minutes, quota, bitrate, rate, source, device, detect, cleanup, boot, save}) recordingControls.add(control);
         ui.text(audio, I18n.s("settings_stop_hint"), 12, ui.muted);
@@ -93,6 +93,21 @@ final class SettingsPanel {
             ui.equal(times, fromButtons[i]); ui.equal(times, toButtons[i]); updateTime(day);
         }
         ui.text(schedule, I18n.s("schedule_hint"), 12, ui.muted);
+        if (Platform.armedService()) ui.text(schedule, I18n.s("standby_hint"), 12, ui.muted);
+        if (android.os.Build.VERSION.SDK_INT >= 31) ui.button(schedule, I18n.s("allow_alarms"), () -> {
+            try { Platform.requestAlarms(activity); } catch (RuntimeException e) { ui.toast(I18n.s("alarm_required")); }
+        }, false);
+        ui.button(schedule, I18n.s("allow_notifications"), () -> {
+            try { Platform.notificationSettings(activity); } catch (RuntimeException e) { ui.toast(I18n.s("notification_required")); }
+        }, false);
+        ui.button(schedule, I18n.s("resume_schedule"), () -> activity.recordingPermission(() -> {
+            if (!config.scheduleEnabled()) { ui.toast(I18n.s("schedule_off")); return; }
+            config.prefs.edit().putBoolean("schedule_paused", false).putLong("schedule_skip", 0).commit();
+            ScheduleManager.reconcile(activity, true); refresh();
+        }), false);
+        ui.button(schedule, I18n.s("pause_schedule"), () -> {
+            ScheduleManager.pauseAll(activity); ScheduleManager.wake(activity); refresh();
+        }, false);
         ui.button(schedule, I18n.s("save_schedule"), () -> {
             if (scheduled.isChecked()) activity.recordingPermission(this::saveSchedule); else saveSchedule();
         }, true);
@@ -114,11 +129,16 @@ final class SettingsPanel {
         LinearLayout storage = ui.card(page); ui.title(storage, "Nextcloud · WebDAV");
         cloudStatus = ui.text(storage, "", 13, ui.muted);
         ui.button(storage, I18n.s("cloud_connection"), () -> activity.startActivity(new Intent(activity, CloudActivity.class)), true);
-        ui.text(storage, RecordingFiles.publicDirectory().getAbsolutePath(), 12, ui.muted).setTextIsSelectable(true);
+        ui.text(storage, RecordingFiles.outputDirectory(activity).getAbsolutePath(), 12, ui.muted).setTextIsSelectable(true);
         ui.button(storage, I18n.s("copy_path"), () -> {
-            activity.getSystemService(ClipboardManager.class).setPrimaryClip(ClipData.newPlainText("Iben Recorder", RecordingFiles.publicDirectory().getAbsolutePath()));
+            activity.getSystemService(ClipboardManager.class).setPrimaryClip(ClipData.newPlainText("Iben Recorder", RecordingFiles.outputDirectory(activity).getAbsolutePath()));
             ui.toast(I18n.s("copied"));
         }, false);
+        if (!Platform.publicStorage()) {
+            ui.text(storage, I18n.s("private_storage_hint"), 12, ui.muted);
+            ui.button(storage, I18n.s("restore_folder"), activity::restoreFolder, false);
+            ui.text(storage, I18n.s("restore_hint"), 12, ui.muted);
+        }
         LinearLayout system = ui.card(page); ui.title(system, I18n.s("service"));
         ui.button(system, I18n.s("battery"), () -> {
             try { activity.startActivity(new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)); }
@@ -130,7 +150,7 @@ final class SettingsPanel {
             ScrollView scroll = new ScrollView(activity); scroll.addView(text);
             new AlertDialog.Builder(activity).setTitle(I18n.s("log")).setView(scroll).setPositiveButton(I18n.s("close"), null).show();
         }, false);
-        ui.text(system, "Iben Recorder 8.1 · 0.4-oreo.1", 12, ui.muted); refresh();
+        ui.text(system, "Iben Recorder · 0.5-universal.1 · Android 8.1+", 12, ui.muted); refresh();
     }
     private interface Selected { void value(int position); }
     private AdapterView.OnItemSelectedListener selection(Selected action) {
@@ -186,7 +206,12 @@ final class SettingsPanel {
         String text = I18n.s("schedule_off");
         if (config.scheduleEnabled()) {
             long skip = config.prefs.getLong("schedule_skip", 0);
-            if (state.active && (skip == -1 || skip > System.currentTimeMillis())) text = I18n.s("schedule_skipped");
+            if (config.prefs.getBoolean("schedule_paused", false)) text = I18n.s("schedule_paused");
+            else if (!Platform.recordingGranted(activity)) text = I18n.s("record_permission");
+            else if (!Platform.exactAlarms(activity)) text = I18n.s("alarm_required");
+            else if (!Platform.notifications(activity)) text = I18n.s("notification_required");
+            else if (Platform.armedService() && !RecorderService.alive()) text = I18n.s("resume_required");
+            else if (state.active && (skip == -1 || skip > System.currentTimeMillis())) text = I18n.s("schedule_skipped");
             else text = I18n.s(state.active ? "schedule_active" : "schedule_waiting");
             if (state.next > 0) text += "\n" + I18n.s(state.active ? "next_end" : "next_start") + ": "
                     + DateTimeFormatter.ofPattern("EEE dd.MM HH:mm", new Locale(config.language())).withZone(ZoneId.systemDefault()).format(Instant.ofEpochMilli(state.next));

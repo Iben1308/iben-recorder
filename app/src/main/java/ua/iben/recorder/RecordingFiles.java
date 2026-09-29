@@ -12,7 +12,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-/** Private staging and public output stay on the same primary volume (Android 8.1). */
+/** Atomic local publication. API 27–28 uses Music; scoped-storage devices use app-owned files. */
 final class RecordingFiles implements AutoCloseable {
     static final class Part {
         final String id;
@@ -62,7 +62,7 @@ final class RecordingFiles implements AutoCloseable {
         if (external == null) throw new IOException("Сховище телефона недоступне");
         pendingDir = new File(external, ".temp");
         legacyDir = new File(external, "pending");
-        readyDir = publicDirectory();
+        readyDir = outputDirectory(context);
         mkdir(pendingDir); mkdir(readyDir);
         File noMedia = new File(pendingDir, ".nomedia");
         if (!noMedia.exists() && !noMedia.createNewFile()) throw new IOException("Не вдалося приховати робочу папку");
@@ -73,6 +73,11 @@ final class RecordingFiles implements AutoCloseable {
     static File publicDirectory() {
         // Keep this prototype isolated from the Android 10 app and its archive.
         return new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC), "IbenRecorder81");
+    }
+    static File outputDirectory(Context context) {
+        if (Platform.publicStorage()) return publicDirectory();
+        File external = context.getExternalFilesDir(null);
+        return new File(external == null ? context.getFilesDir() : external, "recordings");
     }
     private static void mkdir(File directory) throws IOException {
         if (!directory.isDirectory() && !directory.mkdirs()) throw new IOException("Не вдалося створити папку: " + directory);
@@ -90,6 +95,11 @@ final class RecordingFiles implements AutoCloseable {
         if (!RecordingNames.validPublishedName(name)) throw new IOException("Некоректна назва запису");
         File f = new File(readyDir, name);
         if (!inside(f, readyDir)) throw new IOException("Сторонній шлях запису");
+        // Indexed public files may still be accessible after an OS upgrade. Never lose their ledger.
+        if (!Platform.publicStorage() && !f.exists()) {
+            File old = new File(publicDirectory(), name);
+            if (old.isFile() && old.canRead() && inside(old, publicDirectory())) return old;
+        }
         return f;
     }
     private boolean legacyOwned(File f, File directory) throws IOException {
@@ -120,7 +130,7 @@ final class RecordingFiles implements AutoCloseable {
             String name;
             do {
                 name = RecordingNames.format(part.start, part.zone, duration, duplicate++);
-                target = published(name);
+                target = new File(readyDir, name);
             } while (target.exists() || index.nameReserved(name, part.id));
             // Persist the target BEFORE rename, so a crash after rename is recoverable.
             index.prepared(part.id, duration, name);
@@ -137,10 +147,17 @@ final class RecordingFiles implements AutoCloseable {
 
     /** Run only with all capture, writer and finalizer threads stopped. */
     void recover() throws IOException {
+        // Explicit folder imports retain their original source. Partial copies can be retried.
+        if (!DocumentTransfers.restoring()) {
+            File[] interrupted = pendingDir.listFiles();
+            if (interrupted != null) for (File f : interrupted)
+                if (f.getName().matches("[0-9a-f-]{36}\\.restore")) f.delete();
+        }
         for (RecordIndex.Entry e : index.all()) {
             File source = temp(e.id);
             if (e.state == RecordIndex.PUBLISHED) {
-                if (!published(e.finalName).exists()) index.remove(e.id);
+                // Missing can mean scoped-storage access was revoked after an OS upgrade.
+                // Keep ownership and receipts so an explicit folder import can recover the row.
             } else if (e.state != RecordIndex.FAILED) {
                 if (e.state == RecordIndex.READY && !source.exists() && published(e.finalName).isFile()) {
                     index.state(e.id, RecordIndex.PUBLISHED);
@@ -148,7 +165,7 @@ final class RecordingFiles implements AutoCloseable {
                 } else if (source.exists()) {
                     if (duration(source) > 0) finish(new Part(e.id, e.start, e.zone, source));
                     else { index.state(e.id, RecordIndex.FAILED); AppLog.write(context, "Незавершений файл ізольовано у .temp"); }
-                } else index.remove(e.id);
+                } else if (e.state != RecordIndex.READY) index.remove(e.id);
             } else if (!source.exists()) index.remove(e.id);
         }
         // v0.1 files keep their names: do not cause duplicate uploads by renaming an archive.
@@ -166,6 +183,7 @@ final class RecordingFiles implements AutoCloseable {
 
     boolean ensureRoom(long required) throws IOException {
         synchronized (LOCK) {
+            if (DocumentTransfers.restoring()) throw new IOException(I18n.s("restore_busy"));
             Snapshot s = snapshot();
             StoragePolicy.Plan plan = StoragePolicy.plan(s.closed, s.pending, required,
                     config.quota(), readyDir.getUsableSpace(), config.deleteOldest());
@@ -202,12 +220,14 @@ final class RecordingFiles implements AutoCloseable {
                     if (e.state == RecordIndex.PUBLISHED && isVerified(e, f, target) && !READERS.containsKey(f.getAbsolutePath())) s.add(f, e.id);
                     else s.pending += f.length();
                 }
-                else index.remove(e.id);
+                // Keep inaccessible published rows; absence is not proof of deletion.
             } else {
                 s.pending += f.length();
                 if (e.state == RecordIndex.READY && !f.exists()) s.pending += published(e.finalName).length();
             }
         }
+        File[] staged = pendingDir.listFiles();
+        if (staged != null) for (File f : staged) if (f.getName().endsWith(".restore")) s.pending += f.length();
         File[] output = readyDir.listFiles();
         if (output == null) throw new IOException("Немає доступу до папки записів");
         for (File f : output) if (legacyOwned(f, readyDir) && f.getName().endsWith(".m4a")) s.pending += f.length();
@@ -291,6 +311,7 @@ final class RecordingFiles implements AutoCloseable {
         }
     }
     private void scan(File f) {
+        if (!Platform.publicStorage()) return;
         MediaScannerConnection.scanFile(context, new String[]{f.getAbsolutePath()}, new String[]{"audio/mp4"}, null);
     }
     private static void move(File source, File target) throws IOException {

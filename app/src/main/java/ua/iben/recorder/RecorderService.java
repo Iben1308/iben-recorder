@@ -18,6 +18,23 @@ import android.os.SystemClock;
 public final class RecorderService extends Service {
     static final String START = "ua.iben.recorder.oreo.START";
     static final String STOP = "ua.iben.recorder.oreo.STOP";
+    static final String PAUSE_ALL = "ua.iben.recorder.oreo.PAUSE_ALL";
+    private static volatile RecorderService instance;
+    static boolean alive() { RecorderService s = instance; return s != null && !s.destroying && s.foregroundStarted; }
+    static boolean dispatch() {
+        RecorderService s = instance;
+        if (s == null || s.destroying || !s.foregroundStarted || s.worker == null) return false;
+        PowerManager.WakeLock command = s.getSystemService(PowerManager.class).newWakeLock(
+                PowerManager.PARTIAL_WAKE_LOCK, "IbenRecorder:command");
+        command.acquire(15000L);
+        boolean posted = s.worker.post(() -> {
+            try { s.applyDesired(); }
+            finally { if (command.isHeld()) command.release(); }
+        });
+        if (!posted && command.isHeld()) command.release();
+        return posted;
+    }
+    private boolean foregroundStarted;
     private static final String CHANNEL = "recording";
     private static final int NOTIFICATION = 1;
     private HandlerThread thread;
@@ -26,7 +43,7 @@ public final class RecorderService extends Service {
     private Config config;
     private RecordingFiles files;
     private ContinuousRecorder recorder;
-    private boolean destroying;
+    private volatile boolean destroying;
     private int retryCount;
     private int latestStartId;
     private long stableSince;
@@ -39,39 +56,63 @@ public final class RecorderService extends Service {
         NotificationChannel channel = new NotificationChannel(CHANNEL, I18n.tr("Аудіозапис"), NotificationManager.IMPORTANCE_LOW);
         channel.setDescription(I18n.tr("Стан безперервного запису та кнопка зупинки"));
         getSystemService(NotificationManager.class).createNotificationChannel(channel);
-        startForeground(NOTIFICATION, notification("Підготовка…"));
         thread = new HandlerThread("iben-control"); thread.start();
         worker = new Handler(thread.getLooper());
-        wakeLock = getSystemService(PowerManager.class).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "IbenRecorder81:recording");
+        wakeLock = getSystemService(PowerManager.class).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "IbenRecorder:recording");
         wakeLock.setReferenceCounted(false);
+        config.prefs.edit().putBoolean("engine_active", false).apply();
+        try {
+            if (!permissionsGranted()) throw new SecurityException("Recording permission missing");
+            if (Build.VERSION.SDK_INT >= 30) startForeground(NOTIFICATION, notification("Підготовка…"),
+                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE);
+            else startForeground(NOTIFICATION, notification("Підготовка…"));
+            foregroundStarted = true; instance = this;
+            ScheduleManager.clearReminder(this);
+        } catch (RuntimeException e) {
+            AppLog.write(this, "Foreground service: " + e.getClass().getSimpleName());
+            ScheduleManager.awaitingUser(this);
+            stopSelf();
+        }
     }
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
+        if (!foregroundStarted) { stopSelf(startId); return START_NOT_STICKY; }
         String action = intent == null ? null : intent.getAction();
         if (STOP.equals(action)) ScheduleManager.markManualStop(this);
+        if (PAUSE_ALL.equals(action)) ScheduleManager.pauseAll(this);
         if (START.equals(action)) config.prefs.edit().putString("origin", "manual").putBoolean("wanted", true).commit();
-        worker.post(() -> {
-            latestStartId = startId;
-            if (!config.wanted()) {
-                worker.removeCallbacks(retry);
-                if (recorder != null) { report("Завершення й збереження запису…", 0); recorder.stop(); }
-                else finishStopped("Запис зупинено");
-                return;
-            }
-            if (Build.VERSION.SDK_INT != Build.VERSION_CODES.O_MR1 || !permissionsGranted()) {
-                config.wanted(false);
-                String reason = Build.VERSION.SDK_INT != Build.VERSION_CODES.O_MR1 ? "Потрібен Android 8.1" : "Потрібні дозволи на мікрофон і файли";
-                if (recorder != null) recorder.abort(reason); else finishStopped(reason);
-                return;
-            }
-            if (!wakeLock.isHeld()) wakeLock.acquire();
-            if (recorder == null) { worker.removeCallbacks(retry); begin(); }
-        });
+        worker.post(() -> { latestStartId = startId; applyDesired(); });
         return START_STICKY;
     }
-    private boolean permissionsGranted() {
-        return checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
-                && checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED;
+    private void applyDesired() {
+        if (destroying) return;
+        if (!permissionsGranted()) {
+            config.wanted(false);
+            if (recorder != null) recorder.abort(I18n.uk("record_permission"));
+            else finishStopped(I18n.uk("record_permission"));
+            return;
+        }
+        if (!config.wanted()) {
+            worker.removeCallbacks(retry);
+            if (recorder != null) { report("Завершення й збереження запису…", 0); recorder.stop(); }
+            else finishStopped("Запис зупинено");
+            return;
+        }
+        worker.removeCallbacks(standbyTick);
+        if (!wakeLock.isHeld()) wakeLock.acquire();
+        if (recorder == null) { worker.removeCallbacks(retry); begin(); }
     }
+    private boolean permissionsGranted() { return Platform.recordingGranted(this); }
+    private final Runnable standbyTick = new Runnable() {
+        @Override public void run() {
+            if (destroying || recorder != null) return;
+            ScheduleManager.reconcile(RecorderService.this, false);
+            if (config.wanted()) applyDesired();
+            else if (ScheduleManager.standby(config)) {
+                report(I18n.uk("standby_status"), 0);
+                worker.postDelayed(this, 30000L);
+            } else finishStopped("Запис зупинено");
+        }
+    };
     private void begin() {
         if (destroying || !config.wanted() || recorder != null) return;
         try {
@@ -139,12 +180,20 @@ public final class RecorderService extends Service {
         config.prefs.edit().putLong("used_bytes", stats[0]).putLong("free_bytes", stats[1]).putLong("closed_count", stats[2]).apply();
     }
     private void finishStopped(String text) {
-        worker.removeCallbacks(retry); worker.removeCallbacks(heartbeat);
+        worker.removeCallbacks(retry); worker.removeCallbacks(heartbeat); worker.removeCallbacks(standbyTick);
         config.prefs.edit().putBoolean("engine_active", false).putInt("peak", 0).putInt("finishing", 0).apply();
         config.status(text, 0); AppLog.write(this, text);
         releaseResources();
+        if (!destroying && ScheduleManager.standby(config)) {
+            report(I18n.uk("standby_status"), 0);
+            worker.postDelayed(standbyTick, 30000L);
+            return;
+        }
         final int completedStartId = latestStartId;
-        new Handler(getMainLooper()).post(() -> stopSelfResult(completedStartId));
+        new Handler(getMainLooper()).post(() -> {
+            if (config.wanted() || ScheduleManager.standby(config)) { dispatch(); return; }
+            stopSelfResult(completedStartId);
+        });
     }
     private void releaseResources() {
         if (files != null) { files.close(); files = null; }
@@ -152,22 +201,30 @@ public final class RecorderService extends Service {
     }
     private void report(String text, long start) {
         config.status(text, start);
-        getSystemService(NotificationManager.class).notify(NOTIFICATION, notification(text));
+        if (Platform.notifications(this)) {
+            try { getSystemService(NotificationManager.class).notify(NOTIFICATION, notification(text)); }
+            catch (SecurityException ignored) { }
+        }
     }
     private Notification notification(String text) {
         PendingIntent open = PendingIntent.getActivity(this, 1, new Intent(this, MainActivity.class),
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         PendingIntent stop = PendingIntent.getService(this, 2, new Intent(this, RecorderService.class).setAction(STOP),
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-        return new Notification.Builder(this, CHANNEL).setSmallIcon(R.drawable.ic_mic).setContentTitle("Iben Recorder 8.1")
+        PendingIntent pause = PendingIntent.getService(this, 3, new Intent(this, RecorderService.class).setAction(PAUSE_ALL),
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        Notification.Builder builder = new Notification.Builder(this, CHANNEL).setSmallIcon(R.drawable.ic_mic).setContentTitle("Iben Recorder")
                 .setContentText(I18n.tr(text)).setContentIntent(open).setOngoing(true).setOnlyAlertOnce(true)
                 .setCategory(Notification.CATEGORY_SERVICE)
-                .addAction(new Notification.Action.Builder(null, I18n.s("stop"), stop).build()).build();
+                .addAction(new Notification.Action.Builder(null, I18n.s("stop"), stop).build());
+        if (config.scheduleEnabled()) builder.addAction(new Notification.Action.Builder(null, I18n.s("pause_schedule"), pause).build());
+        return builder.build();
     }
     @Override public void onDestroy() {
+        if (instance == this) instance = null;
         if (worker != null) worker.post(() -> {
             destroying = true;
-            worker.removeCallbacks(retry); worker.removeCallbacks(heartbeat);
+            worker.removeCallbacks(retry); worker.removeCallbacks(heartbeat); worker.removeCallbacks(standbyTick);
             if (recorder != null) recorder.stop();
             else { releaseResources(); thread.quitSafely(); }
         });

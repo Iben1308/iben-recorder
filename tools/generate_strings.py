@@ -40,10 +40,16 @@ code += '''        STATUS.sort((a,b) -> Integer.compare(b[0].length(), a[0].leng
         int index = language;
         return args.length == 0 ? values[index] : String.format(new Locale(index == 1 ? "en" : index == 2 ? "pl" : "uk"), values[index], args);
     }
+    public static String uk(String key) {
+        String[] values = UI.get(key);
+        if (values == null) throw new IllegalArgumentException("Missing text: " + key);
+        return values[0];
+    }
     public static String tr(String original) {
         if (original == null) return "";
         int index = language;
         if (index == 0) return original;
+        for (String[] value : UI.values()) if (value[0].equals(original)) return value[index];
         String text = original;
         for (String[] phrase : STATUS) text = text.replace(phrase[0], phrase[index]);
         return text.replaceAll("(\\\\d+) с(?=[.,;\\\\n]|$)", "$1 s");

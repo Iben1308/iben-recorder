@@ -49,6 +49,12 @@ final class RecordIndex extends SQLiteOpenHelper {
         ContentValues v = new ContentValues(); v.put("remote_name", name);
         getWritableDatabase().update("records", v, "id=?", new String[]{id});
     }
+    void clearVerification(String id) {
+        ContentValues v = new ContentValues();
+        v.putNull("verified_target"); v.putNull("verified_hash");
+        v.put("verified_size", -1L); v.put("verified_modified", -1L);
+        getWritableDatabase().update("records", v, "id=?", new String[]{id});
+    }
     void verified(String id, String target, DavClient.Receipt receipt, String remoteName) {
         ContentValues v = new ContentValues();
         v.put("verified_target", target); v.put("verified_size", receipt.size);

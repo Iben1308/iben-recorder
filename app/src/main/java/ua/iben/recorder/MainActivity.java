@@ -30,6 +30,9 @@ public final class MainActivity extends Activity {
     private Runnable afterPermission;
     private String[] requestedPermissions;
     private boolean resumed;
+    private Runnable afterNotification;
+    private String exportId;
+    private static final int EXPORT = 8106, RESTORE = 8107;
     private long refreshed;
 
     @Override protected void attachBaseContext(Context base) { super.attachBaseContext(LocaleContext.wrap(base)); }
@@ -53,7 +56,8 @@ public final class MainActivity extends Activity {
             tabs[i] = ui.button(null, labels[i], () -> tab(index), false); tabs[i].setTextSize(13);
             bar.addView(tabs[i], new LinearLayout.LayoutParams(0, ui.dp(52), 1));
         }
-        setContentView(root);
+        setContentView(root); Platform.insets(this, root, ui.dark);
+        exportId = state == null ? null : state.getString("export_id");
         int selected = state != null ? state.getInt("tab", 1) : getIntent().getIntExtra("tab", config.prefs.getInt("last_tab", 1));
         tab(Math.max(0, Math.min(2, selected))); refresh();
     }
@@ -68,7 +72,7 @@ public final class MainActivity extends Activity {
         record = ui.button(main, I18n.s("start_recording"), () -> {
             if (config.wanted()) { ScheduleManager.manualStop(this); refresh(); }
             else recordingPermission(() -> {
-                if (Build.VERSION.SDK_INT != 27) { ui.toast(I18n.s("android81")); return; }
+                if (DocumentTransfers.restoring()) { ui.toast(I18n.s("restore_busy")); return; }
                 listen.pause(); ScheduleManager.manualStart(this); refresh();
             });
         }, true);
@@ -94,7 +98,6 @@ public final class MainActivity extends Activity {
         LinearLayout storage = ui.card(page);
         ui.title(storage, "Nextcloud"); cloud = ui.text(storage, "", 13, ui.muted);
         ui.text(page, I18n.s("record_manual_hint"), 12, ui.muted);
-        if (Build.VERSION.SDK_INT != 27) ui.text(page, I18n.s("android81"), 15, ui.red);
         return scroll;
     }
     private void tab(int index) {
@@ -112,10 +115,10 @@ public final class MainActivity extends Activity {
     }
     @Override protected void onNewIntent(Intent intent) { super.onNewIntent(intent); setIntent(intent); if (intent.hasExtra("tab")) tab(intent.getIntExtra("tab", 1)); }
     @Override protected void onSaveInstanceState(Bundle state) {
-        super.onSaveInstanceState(state); state.putInt("tab", currentTab); settings.saveDraft(state);
+        super.onSaveInstanceState(state); state.putString("export_id", exportId); state.putInt("tab", currentTab); settings.saveDraft(state);
     }
-    void recordingPermission(Runnable action) { permission(new String[]{Manifest.permission.RECORD_AUDIO, Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE}, action); }
-    void storagePermission(Runnable action) { permission(new String[]{Manifest.permission.READ_EXTERNAL_STORAGE, Manifest.permission.WRITE_EXTERNAL_STORAGE}, action); }
+    void recordingPermission(Runnable action) { permission(Platform.permissions(true), () -> notificationPermission(action)); }
+    void storagePermission(Runnable action) { permission(Platform.permissions(false), action); }
     private void permission(String[] permissions, Runnable action) {
         for (String p : permissions) if (checkSelfPermission(p) != PackageManager.PERMISSION_GRANTED) {
             if (afterPermission != null) return;
@@ -125,12 +128,52 @@ public final class MainActivity extends Activity {
     }
     @Override public void onRequestPermissionsResult(int request, String[] permissions, int[] results) {
         super.onRequestPermissionsResult(request, permissions, results);
+        if (request == 101) {
+            Runnable next = afterNotification; afterNotification = null;
+            if (next != null) next.run();
+            return;
+        }
         if (request != 100 || afterPermission == null) return;
         Runnable action = afterPermission; afterPermission = null;
         for (String p : requestedPermissions) if (checkSelfPermission(p) != PackageManager.PERMISSION_GRANTED) {
             ui.toast(I18n.s("permission_required")); return;
         }
         action.run();
+    }
+    void notificationPermission(Runnable next) {
+        if (Build.VERSION.SDK_INT >= 33 && !Platform.granted(this, Manifest.permission.POST_NOTIFICATIONS)
+                && !config.prefs.getBoolean("notification_asked", false)) {
+            config.prefs.edit().putBoolean("notification_asked", true).apply();
+            afterNotification = next; requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 101);
+        } else next.run();
+    }
+    void exportRecording(RecordingFiles.Item item) {
+        exportId = item.id;
+        try { startActivityForResult(new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE)
+                .setType("audio/mp4").putExtra(Intent.EXTRA_TITLE, item.name), EXPORT); }
+        catch (RuntimeException e) { ui.toast(I18n.s("document_error")); }
+    }
+    void restoreFolder() {
+        try { startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), RESTORE); }
+        catch (RuntimeException e) { ui.toast(I18n.s("document_error")); }
+    }
+    @Override protected void onActivityResult(int request, int result, Intent data) {
+        super.onActivityResult(request, result, data);
+        if (result != RESULT_OK || data == null || data.getData() == null) return;
+        if (request != EXPORT && request != RESTORE) return;
+        android.net.Uri uri = data.getData(); String id = exportId;
+        android.content.Context app = getApplicationContext();
+        ui.toast(I18n.s("copying"));
+        new Thread(() -> {
+            String message;
+            try {
+                if (request == EXPORT) { DocumentTransfers.export(app, id, uri); message = I18n.s("export_done"); }
+                else message = I18n.s("restore_done", DocumentTransfers.restore(app, uri));
+            } catch (Exception e) { message = I18n.s("copy_failed") + " " + I18n.tr(e.getMessage()); }
+            String text = message;
+            runOnUiThread(() -> { if (!isDestroyed()) { ui.toast(text); if (currentTab == 0) listen.load(); } });
+        }, "iben-documents").start();
     }
     private final Runnable tick = new Runnable() {
         @Override public void run() {
@@ -150,10 +193,10 @@ public final class MainActivity extends Activity {
         boolean wanted = config.wanted(), engine = config.prefs.getBoolean("engine_active", false);
         boolean stale = (wanted || engine) && System.currentTimeMillis() - config.prefs.getLong("heartbeat", 0) > 90000;
         boolean active = engine && !stale;
-        status.setText(stale ? I18n.s("stale") : I18n.tr(config.prefs.getString("status", "Запис вимкнено")));
+        status.setText(config.prefs.getBoolean("awaiting_user", false) ? I18n.s("resume_required") : stale ? I18n.s("stale") : I18n.tr(config.prefs.getString("status", "Запис вимкнено")));
         duration.setText(Ui.clock(active ? config.prefs.getLong("segment_ms", 0) : 0));
         record.setText(I18n.s(wanted ? "stop_save" : engine && !stale ? "saving" : "start_recording"));
-        record.setEnabled(Build.VERSION.SDK_INT == 27 && (wanted || !active));
+        record.setEnabled(wanted || !active);
         long used = config.prefs.getLong("used_bytes", 0), free = config.prefs.getLong("free_bytes", 0);
         details.setText(I18n.s("storage_info", used / 1048576d, config.quotaMiB(), free / 1048576d)
                 + "\n" + I18n.s("format_info", config.minutes(), config.bitrate(), config.sampleRate())

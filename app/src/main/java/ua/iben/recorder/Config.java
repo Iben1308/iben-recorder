@@ -17,7 +17,7 @@ final class Config {
         return days;
     }
     void schedule(boolean enabled, WeeklySchedule.Day[] days) {
-        SharedPreferences.Editor edit = prefs.edit().putBoolean("schedule_enabled", enabled).putLong("schedule_skip", 0);
+        SharedPreferences.Editor edit = prefs.edit().putBoolean("schedule_enabled", enabled).putLong("schedule_skip", 0).putBoolean("schedule_paused", false);
         for (int i = 0; i < 7; i++) edit.putBoolean("day_" + i, days[i].enabled).putInt("from_" + i, days[i].start).putInt("to_" + i, days[i].end);
         if (!edit.commit()) throw new IllegalStateException("Не вдалося зберегти розклад");
     }

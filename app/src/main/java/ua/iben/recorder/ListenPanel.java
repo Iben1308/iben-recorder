@@ -86,6 +86,10 @@ final class ListenPanel {
         });
         zoom = ui.button(null, "1×", this::zoomPressed, false); ui.equal(options, zoom);
         zoom.setContentDescription(I18n.s("zoom"));
+        ui.button(card, I18n.s("export_recording"), () -> {
+            if (selected == null) { ui.toast(I18n.s("choose_recording")); return; }
+            activity.exportRecording(selected);
+        }, false);
         analysis = ui.text(card, I18n.s("wave_hint"), 12, ui.muted);
         LinearLayout listHeader = ui.row(); header.addView(listHeader);
         count = ui.text(null, I18n.s("recordings"), 16, ui.ink); ui.equal(listHeader, count);
@@ -97,11 +101,13 @@ final class ListenPanel {
         });
         view.addView(list, new LinearLayout.LayoutParams(-1, 0, 1));
         ui.text(view, I18n.s("listen_hint"), 11, ui.muted);
-        activity.registerReceiver(noisy, new IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY));
+        IntentFilter filter = new IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY);
+        if (android.os.Build.VERSION.SDK_INT >= 33) activity.registerReceiver(noisy, filter, Context.RECEIVER_NOT_EXPORTED);
+        else activity.registerReceiver(noisy, filter);
     }
     void load() {
         if (loading || gone) return;
-        if (activity.checkSelfPermission(android.Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+        if (!Platform.storageGranted(activity)) {
             activity.storagePermission(this::load); return;
         }
         loading = true; count.setText(I18n.s("loading"));

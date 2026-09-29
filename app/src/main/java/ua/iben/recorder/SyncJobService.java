@@ -32,6 +32,7 @@ public final class SyncJobService extends JobService {
         }
     }
     @Override public boolean onStopJob(JobParameters parameters) {
+        if (android.os.Build.VERSION.SDK_INT >= 31) AppLog.write(this, "WebDAV JobScheduler stopReason=" + parameters.getStopReason());
         Runner runner = runners.remove(parameters.getExtras().getLong("serial"));
         if (runner != null) {
             if (runner.current()) runner.cloud.status("Передачу призупинено Android; очікування дозволеної мережі та фонової роботи");
@@ -70,7 +71,7 @@ public final class SyncJobService extends JobService {
                 revision = connection.revision;
                 // A canceled job must not use new credentials with its old network constraints.
                 if (revision != parameters.getExtras().getLong("revision")) return;
-                if (checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED)
+                if (!Platform.storageGranted(SyncJobService.this))
                     throw new IOException("Надайте дозвіл на сховище, запустивши запис у застосунку");
                 client = new DavClient(connection.target, connection.password, (phase, done, total) -> {
                     long now = SystemClock.elapsedRealtime();

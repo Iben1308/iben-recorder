@@ -12,10 +12,9 @@ public final class BootReceiver extends BroadcastReceiver {
         if (!Intent.ACTION_BOOT_COMPLETED.equals(action)
                 && !Intent.ACTION_MY_PACKAGE_REPLACED.equals(action)) return;
         Config config = new Config(context);
-        if (Build.VERSION.SDK_INT == Build.VERSION_CODES.O_MR1) SyncScheduler.kick(context);
-        if (Build.VERSION.SDK_INT == 27) {
-            if (!config.resumeAtBoot() && !"schedule".equals(config.origin())) config.wanted(false);
-            ScheduleManager.reconcile(context, true);
-        }
+        SyncScheduler.kick(context);
+        // Reconcile alarms on every supported OS; microphone startup on API 30+ requires user interaction.
+        if (!config.resumeAtBoot() && !"schedule".equals(config.origin())) config.wanted(false);
+        ScheduleManager.reconcile(context, true);
     }
 }

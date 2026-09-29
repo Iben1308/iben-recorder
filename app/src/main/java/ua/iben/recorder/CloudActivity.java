@@ -39,7 +39,7 @@ public final class CloudActivity extends Activity {
         cloud = new CloudSettings(this);
         ScrollView scroll = new ScrollView(this);
         root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL);
-        root.setPadding(dp(22), dp(22), dp(22), dp(30)); scroll.addView(root); setContentView(scroll);
+        root.setPadding(dp(22), dp(22), dp(22), dp(30)); scroll.addView(root); setContentView(scroll); Platform.insets(this, scroll, dark);
         text("Nextcloud · WebDAV", 26);
         text("Пряме завантаження готових записів. Застосунок Nextcloud на телефоні не потрібний.", 14);
         status = text("", 15);

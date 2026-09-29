@@ -3,17 +3,23 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="27" />
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="27" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-feature android:name="android.hardware.microphone" android:required="true" />
     <application
         android:name="ua.iben.recorder.RecorderApp"
-        android:label="Iben Recorder 8.1"
+        android:label="Iben Recorder"
         android:icon="@drawable/ic_mic"
         android:theme="@style/AppTheme"
         android:allowBackup="false"
+        android:fullBackupContent="@xml/backup_rules"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:usesCleartextTraffic="false"
         android:supportsRtl="true">
         <activity android:name="ua.iben.recorder.MainActivity" android:exported="true">
@@ -23,7 +29,8 @@
             </intent-filter>
         </activity>
         <activity android:name="ua.iben.recorder.CloudActivity" android:exported="false" />
-        <service android:name="ua.iben.recorder.RecorderService" android:exported="false" android:stopWithTask="false" />
+        <service android:name="ua.iben.recorder.RecorderService" android:exported="false" android:stopWithTask="false"
+            android:foregroundServiceType="microphone" />
         <service android:name="ua.iben.recorder.SyncJobService"
             android:permission="android.permission.BIND_JOB_SERVICE" android:exported="true" />
         <receiver android:name="ua.iben.recorder.BootReceiver" android:exported="true">
@@ -36,6 +43,7 @@
             <intent-filter>
                 <action android:name="android.intent.action.TIME_SET" />
                 <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED" />
             </intent-filter>
         </receiver>
     </application>

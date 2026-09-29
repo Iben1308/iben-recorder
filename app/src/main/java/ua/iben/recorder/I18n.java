@@ -119,6 +119,31 @@ public final class I18n {
         UI.put("close", new String[]{"Закрити", "Close", "Zamknij"});
         UI.put("saved", new String[]{"Налаштування збережено", "Settings saved", "Ustawienia zapisane"});
         UI.put("numbers_invalid", new String[]{"Перевір числові значення", "Check the numeric values", "Sprawdź wartości liczbowe"});
+        UI.put("record_permission", new String[]{"Надайте дозвіл на мікрофон і, на Android 8.1–9, на файли", "Allow microphone access and, on Android 8.1–9, storage access", "Zezwól na mikrofon, a na Androidzie 8.1–9 także na dostęp do plików"});
+        UI.put("resume_required", new String[]{"Відкрийте Iben Recorder, щоб відновити запис або очікування розкладу", "Open Iben Recorder to resume recording or schedule standby", "Otwórz Iben Recorder, aby wznowić nagrywanie lub czuwanie według harmonogramu"});
+        UI.put("schedule_notice", new String[]{"Відновлення розкладу", "Resume schedule", "Wznawianie harmonogramu"});
+        UI.put("standby_status", new String[]{"Очікування розкладу · мікрофон зараз не записує", "Schedule standby · microphone is not recording", "Czuwanie według harmonogramu · mikrofon nie nagrywa"});
+        UI.put("alarm_required", new String[]{"Для розкладу дозвольте «Будильники та нагадування»", "Allow Alarms & reminders to use the schedule", "Aby używać harmonogramu, zezwól na alarmy i przypomnienia"});
+        UI.put("notification_required", new String[]{"Для розкладу увімкніть сповіщення Iben Recorder", "Enable Iben Recorder notifications to use the schedule", "Włącz powiadomienia Iben Recorder, aby używać harmonogramu"});
+        UI.put("pause_schedule", new String[]{"Зупинити запис і призупинити розклад", "Stop recording and pause schedule", "Zatrzymaj nagrywanie i wstrzymaj harmonogram"});
+        UI.put("resume_schedule", new String[]{"Активувати розклад", "Activate schedule", "Aktywuj harmonogram"});
+        UI.put("schedule_paused", new String[]{"Розклад призупинений — натисніть «Активувати розклад»", "Schedule paused — tap Activate schedule", "Harmonogram wstrzymany — dotknij Aktywuj harmonogram"});
+        UI.put("standby_hint", new String[]{"На Android 11+ активуйте розклад у відкритому застосунку. Постійне сповіщення показує режим очікування; поза часовими діапазонами звук не записується. Після перезавантаження або зупинки служби відкрийте застосунок знову.", "On Android 11+, activate the schedule with the app open. A persistent notification shows standby; no audio is recorded outside the time ranges. Open the app again after a reboot or service shutdown.", "Na Androidzie 11+ aktywuj harmonogram w otwartej aplikacji. Stałe powiadomienie pokazuje czuwanie; poza przedziałami czasu dźwięk nie jest nagrywany. Po ponownym uruchomieniu telefonu lub zatrzymaniu usługi otwórz aplikację ponownie."});
+        UI.put("boot_remind", new String[]{"Пропонувати відновити ручний запис після перезавантаження", "Offer to resume manual recording after reboot", "Proponuj wznowienie ręcznego nagrywania po restarcie"});
+        UI.put("allow_alarms", new String[]{"Дозволити точний розклад", "Allow exact scheduling", "Zezwól na dokładny harmonogram"});
+        UI.put("allow_notifications", new String[]{"Налаштування сповіщень", "Notification settings", "Ustawienia powiadomień"});
+        UI.put("private_storage_hint", new String[]{"Android 10+: записи в папці застосунку. Nextcloud отримує їх через WebDAV. Для окремої копії натисніть «Експортувати запис» у вкладці «Слухати». Видалення застосунку або очищення його даних видаляє ці локальні записи.", "Android 10+: recordings are in app storage. Nextcloud receives them through WebDAV. To make a separate copy, tap Export recording in Listen. Uninstalling the app or clearing its data removes these local recordings.", "Android 10+: nagrania są w folderze aplikacji. Nextcloud odbiera je przez WebDAV. Aby utworzyć osobną kopię, wybierz Eksportuj nagranie w zakładce Słuchaj. Odinstalowanie aplikacji lub wyczyszczenie jej danych usuwa te lokalne nagrania."});
+        UI.put("export_recording", new String[]{"Експортувати запис", "Export recording", "Eksportuj nagranie"});
+        UI.put("export_done", new String[]{"Копію запису збережено", "Recording copy saved", "Kopia nagrania zapisana"});
+        UI.put("copying", new String[]{"Копіювання…", "Copying…", "Kopiowanie…"});
+        UI.put("copy_failed", new String[]{"Не вдалося скопіювати файл. Копія може бути неповною.", "Could not copy the file. The copy may be incomplete.", "Nie udało się skopiować pliku. Kopia może być niepełna."});
+        UI.put("document_error", new String[]{"Не вдалося відкрити вибране місце збереження", "Could not open the selected storage location", "Nie udało się otworzyć wybranej lokalizacji"});
+        UI.put("restore_folder", new String[]{"Підключити стару папку після оновлення Android", "Reconnect old folder after an Android upgrade", "Podłącz stary folder po aktualizacji Androida"});
+        UI.put("restore_hint", new String[]{"Якщо після оновлення Android зникли старі записи зі списку, зупиніть запис і розклад та виберіть Music/IbenRecorder81. Копіюються лише файли з наявного реєстру цього застосунку. Оригінали залишаються у старій папці.", "If old recordings disappear from the list after an Android upgrade, stop recording and pause the schedule, then select Music/IbenRecorder81. Only files in this app’s existing ledger are copied. Originals remain in the old folder.", "Jeśli po aktualizacji Androida stare nagrania znikną z listy, zatrzymaj nagrywanie i wstrzymaj harmonogram, a następnie wybierz Music/IbenRecorder81. Kopiowane są tylko pliki z istniejącego rejestru tej aplikacji. Oryginały pozostają w starym folderze."});
+        UI.put("restore_done", new String[]{"Відновлено доступ до записів: %d", "Recordings reconnected: %d", "Przywrócono dostęp do nagrań: %d"});
+        UI.put("restore_stop", new String[]{"Спочатку зупиніть запис і призупиніть розклад", "Stop recording and pause the schedule first", "Najpierw zatrzymaj nagrywanie i wstrzymaj harmonogram"});
+        UI.put("restore_space", new String[]{"Для копіювання недостатньо місця в межах ліміту записів", "Not enough space within the recording limit to copy", "Za mało miejsca w limicie nagrań na kopiowanie"});
+        UI.put("restore_busy", new String[]{"Зачекайте завершення підключення старої папки", "Wait for the old folder reconnection to finish", "Poczekaj na zakończenie podłączania starego folderu"});
         STATUS.add(new String[]{"\nЗа останньою перевіркою в черзі: ", "\nQueued at last check: ", "\nW kolejce podczas ostatniej kontroli: "});
         STATUS.add(new String[]{"\nОстанній підтверджений: ", "\nLast verified: ", "\nOstatni zweryfikowany: "});
         STATUS.add(new String[]{" байтів)", " bytes)", " bajtów)"});
@@ -281,10 +306,16 @@ public final class I18n {
         int index = language;
         return args.length == 0 ? values[index] : String.format(new Locale(index == 1 ? "en" : index == 2 ? "pl" : "uk"), values[index], args);
     }
+    public static String uk(String key) {
+        String[] values = UI.get(key);
+        if (values == null) throw new IllegalArgumentException("Missing text: " + key);
+        return values[0];
+    }
     public static String tr(String original) {
         if (original == null) return "";
         int index = language;
         if (index == 0) return original;
+        for (String[] value : UI.values()) if (value[0].equals(original)) return value[index];
         String text = original;
         for (String[] phrase : STATUS) text = text.replace(phrase[0], phrase[index]);
         return text.replaceAll("(\\d+) с(?=[.,;\\n]|$)", "$1 s");

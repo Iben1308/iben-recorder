@@ -35,7 +35,7 @@ final class SyncScheduler {
     }
     private static void scheduleLocked(Context context, long delay, boolean force) {
         CloudSettings cloud = new CloudSettings(context);
-        if (Build.VERSION.SDK_INT != Build.VERSION_CODES.O_MR1 || !cloud.enabled() || !cloud.hasSecret()) return;
+        if (!cloud.enabled() || !cloud.hasSecret()) return;
         if (!force && SyncJobService.busy()) return;
         try {
             long now = System.currentTimeMillis();

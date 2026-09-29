@@ -108,3 +108,28 @@ log	Журнал роботи	Activity log	Dziennik działania
 close	Закрити	Close	Zamknij
 saved	Налаштування збережено	Settings saved	Ustawienia zapisane
 numbers_invalid	Перевір числові значення	Check the numeric values	Sprawdź wartości liczbowe
+record_permission	Надайте дозвіл на мікрофон і, на Android 8.1–9, на файли	Allow microphone access and, on Android 8.1–9, storage access	Zezwól na mikrofon, a na Androidzie 8.1–9 także na dostęp do plików
+resume_required	Відкрийте Iben Recorder, щоб відновити запис або очікування розкладу	Open Iben Recorder to resume recording or schedule standby	Otwórz Iben Recorder, aby wznowić nagrywanie lub czuwanie według harmonogramu
+schedule_notice	Відновлення розкладу	Resume schedule	Wznawianie harmonogramu
+standby_status	Очікування розкладу · мікрофон зараз не записує	Schedule standby · microphone is not recording	Czuwanie według harmonogramu · mikrofon nie nagrywa
+alarm_required	Для розкладу дозвольте «Будильники та нагадування»	Allow Alarms & reminders to use the schedule	Aby używać harmonogramu, zezwól na alarmy i przypomnienia
+notification_required	Для розкладу увімкніть сповіщення Iben Recorder	Enable Iben Recorder notifications to use the schedule	Włącz powiadomienia Iben Recorder, aby używać harmonogramu
+pause_schedule	Зупинити запис і призупинити розклад	Stop recording and pause schedule	Zatrzymaj nagrywanie i wstrzymaj harmonogram
+resume_schedule	Активувати розклад	Activate schedule	Aktywuj harmonogram
+schedule_paused	Розклад призупинений — натисніть «Активувати розклад»	Schedule paused — tap Activate schedule	Harmonogram wstrzymany — dotknij Aktywuj harmonogram
+standby_hint	На Android 11+ активуйте розклад у відкритому застосунку. Постійне сповіщення показує режим очікування; поза часовими діапазонами звук не записується. Після перезавантаження або зупинки служби відкрийте застосунок знову.	On Android 11+, activate the schedule with the app open. A persistent notification shows standby; no audio is recorded outside the time ranges. Open the app again after a reboot or service shutdown.	Na Androidzie 11+ aktywuj harmonogram w otwartej aplikacji. Stałe powiadomienie pokazuje czuwanie; poza przedziałami czasu dźwięk nie jest nagrywany. Po ponownym uruchomieniu telefonu lub zatrzymaniu usługi otwórz aplikację ponownie.
+boot_remind	Пропонувати відновити ручний запис після перезавантаження	Offer to resume manual recording after reboot	Proponuj wznowienie ręcznego nagrywania po restarcie
+allow_alarms	Дозволити точний розклад	Allow exact scheduling	Zezwól na dokładny harmonogram
+allow_notifications	Налаштування сповіщень	Notification settings	Ustawienia powiadomień
+private_storage_hint	Android 10+: записи в папці застосунку. Nextcloud отримує їх через WebDAV. Для окремої копії натисніть «Експортувати запис» у вкладці «Слухати». Видалення застосунку або очищення його даних видаляє ці локальні записи.	Android 10+: recordings are in app storage. Nextcloud receives them through WebDAV. To make a separate copy, tap Export recording in Listen. Uninstalling the app or clearing its data removes these local recordings.	Android 10+: nagrania są w folderze aplikacji. Nextcloud odbiera je przez WebDAV. Aby utworzyć osobną kopię, wybierz Eksportuj nagranie w zakładce Słuchaj. Odinstalowanie aplikacji lub wyczyszczenie jej danych usuwa te lokalne nagrania.
+export_recording	Експортувати запис	Export recording	Eksportuj nagranie
+export_done	Копію запису збережено	Recording copy saved	Kopia nagrania zapisana
+copying	Копіювання…	Copying…	Kopiowanie…
+copy_failed	Не вдалося скопіювати файл. Копія може бути неповною.	Could not copy the file. The copy may be incomplete.	Nie udało się skopiować pliku. Kopia może być niepełna.
+document_error	Не вдалося відкрити вибране місце збереження	Could not open the selected storage location	Nie udało się otworzyć wybranej lokalizacji
+restore_folder	Підключити стару папку після оновлення Android	Reconnect old folder after an Android upgrade	Podłącz stary folder po aktualizacji Androida
+restore_hint	Якщо після оновлення Android зникли старі записи зі списку, зупиніть запис і розклад та виберіть Music/IbenRecorder81. Копіюються лише файли з наявного реєстру цього застосунку. Оригінали залишаються у старій папці.	If old recordings disappear from the list after an Android upgrade, stop recording and pause the schedule, then select Music/IbenRecorder81. Only files in this app’s existing ledger are copied. Originals remain in the old folder.	Jeśli po aktualizacji Androida stare nagrania znikną z listy, zatrzymaj nagrywanie i wstrzymaj harmonogram, a następnie wybierz Music/IbenRecorder81. Kopiowane są tylko pliki z istniejącego rejestru tej aplikacji. Oryginały pozostają w starym folderze.
+restore_done	Відновлено доступ до записів: %d	Recordings reconnected: %d	Przywrócono dostęp do nagrań: %d
+restore_stop	Спочатку зупиніть запис і призупиніть розклад	Stop recording and pause the schedule first	Najpierw zatrzymaj nagrywanie i wstrzymaj harmonogram
+restore_space	Для копіювання недостатньо місця в межах ліміту записів	Not enough space within the recording limit to copy	Za mało miejsca w limicie nagrań na kopiowanie
+restore_busy	Зачекайте завершення підключення старої папки	Wait for the old folder reconnection to finish	Poczekaj na zakończenie podłączania starego folderu

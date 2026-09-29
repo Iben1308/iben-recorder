@@ -6,9 +6,9 @@ android {
     defaultConfig {
         applicationId 'ua.iben.recorder.oreo'
         minSdk 27
-        targetSdk 27
-        versionCode 3
-        versionName '0.4-oreo.1'
+        targetSdk 35
+        versionCode 4
+        versionName '0.5-universal.1'
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
@@ -16,11 +16,6 @@ android {
     }
     buildTypes {
         release { minifyEnabled false }
-    }
-    lint {
-        // This is the explicitly API-27, sideloaded prototype, not a Play Store release.
-        // Keep the store-target notice visible without hiding any runtime/API errors.
-        warning 'ExpiredTargetSdkVersion'
     }
 }
 
