@@ -26,17 +26,33 @@ final class RecordIndex extends SQLiteOpenHelper {
         long verifiedModified;
         String verifiedHash;
         String remoteName;
+        long position;
+        boolean listened;
+        String heardRanges;
     }
-    RecordIndex(Context context) { super(context, "recordings.db", null, 2); }
+    RecordIndex(Context context) { super(context, "recordings.db", null, 3); }
     @Override public void onCreate(SQLiteDatabase db) {
         db.execSQL("CREATE TABLE records (id TEXT PRIMARY KEY, start_ms INTEGER NOT NULL, "
                 + "zone TEXT NOT NULL, duration_ms INTEGER NOT NULL DEFAULT 0, "
                 + "final_name TEXT UNIQUE, state INTEGER NOT NULL)");
         addCloudColumns(db);
+        addPlaybackColumns(db);
     }
     @Override public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
-        if (oldVersion == 1 && newVersion == 2) addCloudColumns(db);
-        else throw new IllegalStateException("Unsupported recording index upgrade");
+        if (oldVersion < 1 || newVersion > 3) throw new IllegalStateException("Unsupported recording index upgrade");
+        if (oldVersion < 2) addCloudColumns(db);
+        if (oldVersion < 3) addPlaybackColumns(db);
+    }
+    private static void addPlaybackColumns(SQLiteDatabase db) {
+        db.execSQL("ALTER TABLE records ADD COLUMN playback_ms INTEGER NOT NULL DEFAULT 0");
+        db.execSQL("ALTER TABLE records ADD COLUMN listened INTEGER NOT NULL DEFAULT 0");
+        db.execSQL("ALTER TABLE records ADD COLUMN heard_ranges TEXT NOT NULL DEFAULT ''");
+    }
+    void playback(String id, long position, String ranges, Boolean listened) {
+        ContentValues values = new ContentValues();
+        values.put("playback_ms", Math.max(0, position)); values.put("heard_ranges", ranges);
+        if (listened != null) values.put("listened", listened ? 1 : 0);
+        getWritableDatabase().update("records", values, "id=? AND state=?", new String[]{id, String.valueOf(PUBLISHED)});
     }
     private static void addCloudColumns(SQLiteDatabase db) {
         db.execSQL("ALTER TABLE records ADD COLUMN verified_target TEXT");
@@ -89,7 +105,7 @@ final class RecordIndex extends SQLiteOpenHelper {
         List<Entry> result = new ArrayList<>();
         try (Cursor cursor = getReadableDatabase().query("records",
                 new String[]{"id", "start_ms", "zone", "duration_ms", "final_name", "state",
-                        "verified_target", "verified_size", "verified_modified", "verified_hash", "remote_name"},
+                        "verified_target", "verified_size", "verified_modified", "verified_hash", "remote_name", "playback_ms", "listened", "heard_ranges"},
                 null, null, null, null, "start_ms ASC")) {
             while (cursor.moveToNext()) {
                 Entry e = new Entry();
@@ -98,6 +114,7 @@ final class RecordIndex extends SQLiteOpenHelper {
                 e.verifiedTarget = cursor.getString(6); e.verifiedSize = cursor.getLong(7);
                 e.verifiedModified = cursor.getLong(8); e.verifiedHash = cursor.getString(9);
                 e.remoteName = cursor.getString(10);
+                e.position=cursor.getLong(11);e.listened=cursor.getInt(12)!=0;e.heardRanges=cursor.getString(13);
                 result.add(e);
             }
         }

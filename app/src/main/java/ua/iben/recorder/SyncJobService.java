@@ -52,6 +52,7 @@ public final class SyncJobService extends JobService {
         volatile DavClient client;
         long lastProgress;
         volatile long revision;
+        boolean pendingFiles;
         final CloudSettings cloud = new CloudSettings(SyncJobService.this);
         Runner(JobParameters parameters) { this.parameters = parameters; }
         void cancel() {
@@ -67,6 +68,12 @@ public final class SyncJobService extends JobService {
                 Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND);
                 TRANSFER.acquire(); acquired = true;
                 if (stopped || !cloud.enabled()) return;
+                revision=cloud.revision();
+                if(revision!=parameters.getExtras().getLong("revision"))return;
+                try(RecordingFiles files=new RecordingFiles(SyncJobService.this,new Config(SyncJobService.this))) {
+                    int pending=files.uploads(cloud.targetKey()).size();pendingFiles=pending>0;cloud.prefs.edit().putInt("pending",pending).apply();
+                    if(!pendingFiles){cloud.prefs.edit().putInt("failures",0).putLong("retry_at",0).apply();cloud.status("Усі готові записи передано й перевірено");ProblemNotifications.cloudHealthy(SyncJobService.this);return;}
+                }
                 CloudSettings.Connection connection = cloud.connection();
                 revision = connection.revision;
                 // A canceled job must not use new credentials with its old network constraints.
@@ -86,6 +93,7 @@ public final class SyncJobService extends JobService {
                         List<RecordingFiles.Upload> queue = files.uploads(connection.target.key);
                         cloud.prefs.edit().putInt("pending", queue.size()).apply();
                         if (queue.isEmpty()) {
+                            ProblemNotifications.cloudHealthy(SyncJobService.this);
                             cloud.prefs.edit().putInt("failures", 0).putLong("retry_at", 0).apply();
                             cloud.status("Усі готові записи передано й перевірено");
                             break;
@@ -104,6 +112,7 @@ public final class SyncJobService extends JobService {
                         }
                         if (!current()) return;
                         files.uploaded(file, connection.target.key, remoteName, receipt);
+                        ProblemNotifications.cloudHealthy(SyncJobService.this);
                         cloud.prefs.edit().putString("last_file", file.name).putLong("last_success", System.currentTimeMillis())
                                 .putInt("failures", 0).putLong("retry_at", 0).putInt("pending", queue.size() - 1).apply();
                         AppLog.write(SyncJobService.this, "WebDAV: передано й перевірено SHA-256: " + file.name);
@@ -119,6 +128,7 @@ public final class SyncJobService extends JobService {
                     String reason = CloudSettings.error(e);
                     cloud.status(reason + ". Повтор не раніше ніж через " + next / 1000L + " с за наявності мережі");
                     AppLog.write(SyncJobService.this, "WebDAV: " + reason);
+                    if (pendingFiles) ProblemNotifications.cloudFailure(SyncJobService.this,revision);
                 }
             } finally {
                 if (client != null) client.close();

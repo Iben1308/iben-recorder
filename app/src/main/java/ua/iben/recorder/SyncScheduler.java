@@ -16,11 +16,12 @@ final class SyncScheduler {
         synchronized (RecordingFiles.LOCK) {
             context.getSystemService(JobScheduler.class).cancel(JOB);
             new CloudSettings(context).prefs.edit().putInt("failures", 0).putLong("retry_at", 0).apply();
+            ProblemNotifications.cloudHealthy(context);
             schedule(context, 0, true);
         }
     }
     static void cancel(Context context) {
-        synchronized (RecordingFiles.LOCK) { context.getSystemService(JobScheduler.class).cancel(JOB); }
+        synchronized (RecordingFiles.LOCK) { context.getSystemService(JobScheduler.class).cancel(JOB); ProblemNotifications.cloudHealthy(context); }
     }
     static void finished(Context context, long serial, long delay) {
         synchronized (RecordingFiles.LOCK) {

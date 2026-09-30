@@ -49,6 +49,8 @@ public final class RecorderService extends Service {
     private long stableSince;
     private long lastStats;
     private long lastScheduleCheck;
+    private boolean healthReported;
+    static final String PAUSE_SCHEDULE="ua.iben.recorder.oreo.PAUSE_SCHEDULE";
 
     @Override public void onCreate() {
         super.onCreate();
@@ -79,6 +81,7 @@ public final class RecorderService extends Service {
         String action = intent == null ? null : intent.getAction();
         if (STOP.equals(action)) ScheduleManager.markManualStop(this);
         if (PAUSE_ALL.equals(action)) ScheduleManager.pauseAll(this);
+        if (PAUSE_SCHEDULE.equals(action)) ScheduleManager.pauseSchedule(this);
         if (START.equals(action)) config.prefs.edit().putString("origin", "manual").putBoolean("wanted", true).commit();
         worker.post(() -> { latestStartId = startId; applyDesired(); });
         return START_STICKY;
@@ -119,7 +122,7 @@ public final class RecorderService extends Service {
             if (files == null) files = new RecordingFiles(this, config);
             recorder = new ContinuousRecorder(config, files, (ended, error) -> worker.post(() -> ended(ended, error)));
             config.prefs.edit().putBoolean("engine_active", true).putLong("segment_ms", 0).apply();
-            stableSince = SystemClock.elapsedRealtime(); lastStats = 0;
+            stableSince = SystemClock.elapsedRealtime(); lastStats = 0; healthReported = false;
             report("Підготовка запису…", 0);
             AppLog.write(this, "Запуск безперервного аудіодвигуна");
             recorder.start();
@@ -132,7 +135,7 @@ public final class RecorderService extends Service {
         worker.removeCallbacks(heartbeat);
         config.prefs.edit().putBoolean("engine_active", false).putInt("peak", 0).putInt("finishing", 0).apply();
         try { updateStats(); } catch (Exception ignored) { }
-        if (error != null) AppLog.write(this, "Помилка запису: " + message(error));
+        if (error != null) { AppLog.write(this, "Помилка запису: " + message(error)); ProblemNotifications.recordingFailure(this,error); }
         if (destroying) { releaseResources(); thread.quitSafely(); }
         else if (config.wanted()) {
             if (error == null) begin(); else scheduleRetry(error);
@@ -140,6 +143,7 @@ public final class RecorderService extends Service {
     }
     private final Runnable retry = this::begin;
     private void scheduleRetry(Throwable error) {
+        ProblemNotifications.recordingFailure(this,error);
         config.prefs.edit().putBoolean("engine_active", false).apply();
         if (destroying || !config.wanted()) { finishStopped(message(error)); return; }
         long delay = retryCount == 0 ? 5000L : retryCount == 1 ? 15000L : 60000L;
@@ -160,6 +164,9 @@ public final class RecorderService extends Service {
             if (current.recording() && config.wanted()
                     && (now - current.lastCapture() > 30000L || now - current.lastWrite() > 30000L))
                 current.abort("Немає нового аудіо понад 30 секунд");
+            if (!healthReported && current.recording() && now-stableSince>60000L && now-current.lastCapture()<5000L && now-current.lastWrite()<5000L) {
+                ProblemNotifications.recordingHealthy(RecorderService.this); healthReported=true;
+            }
             if (now - stableSince > 300000L) retryCount = 0;
             try { if (now - lastStats >= 10000L) { updateStats(); lastStats = now; } }
             catch (Exception e) { current.abort("Контроль пам’яті: " + message(e)); }
@@ -211,13 +218,13 @@ public final class RecorderService extends Service {
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         PendingIntent stop = PendingIntent.getService(this, 2, new Intent(this, RecorderService.class).setAction(STOP),
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-        PendingIntent pause = PendingIntent.getService(this, 3, new Intent(this, RecorderService.class).setAction(PAUSE_ALL),
+        PendingIntent pause = PendingIntent.getService(this, 3, new Intent(this, RecorderService.class).setAction(PAUSE_SCHEDULE),
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         Notification.Builder builder = new Notification.Builder(this, CHANNEL).setSmallIcon(R.drawable.ic_mic).setContentTitle("Iben Recorder")
                 .setContentText(I18n.tr(text)).setContentIntent(open).setOngoing(true).setOnlyAlertOnce(true)
                 .setCategory(Notification.CATEGORY_SERVICE)
                 .addAction(new Notification.Action.Builder(null, I18n.s("stop"), stop).build());
-        if (config.scheduleEnabled()) builder.addAction(new Notification.Action.Builder(null, I18n.s("pause_schedule"), pause).build());
+        if (config.scheduleEnabled() && !config.prefs.getBoolean("schedule_paused",false)) builder.addAction(new Notification.Action.Builder(null, I18n.s("schedule_pause_only"), pause).build());
         return builder.build();
     }
     @Override public void onDestroy() {

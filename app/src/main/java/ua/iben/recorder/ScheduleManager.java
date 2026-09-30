@@ -48,6 +48,20 @@ final class ScheduleManager {
             context.getSystemService(NotificationManager.class).cancel(RESUME_NOTIFICATION);
         }
     }
+    static void activateSchedule(Context context) {
+        synchronized (LOCK) {
+            new Config(context).prefs.edit().putBoolean("schedule_enabled", true).putBoolean("schedule_paused", false).putLong("schedule_skip", 0).commit();
+            reconcile(context, true);
+        }
+    }
+    static void pauseSchedule(Context context) {
+        synchronized (LOCK) {
+            Config c = new Config(context);
+            WeeklySchedule.Decision pause=WeeklySchedule.decide(c.wanted(),"schedule".equals(c.origin()),false,true);
+            c.prefs.edit().putBoolean("schedule_paused",true).putBoolean("wanted",pause.wanted).putString("origin",pause.wanted?"manual":"none").commit();
+            scheduleNext(context,c,state(c),true);clearReminder(context);wake(context);
+        }
+    }
     static void manualStop(Context context) { markManualStop(context); wake(context); }
     static void wake(Context context) {
         // Dispatch to the existing service without attempting a prohibited background launch.

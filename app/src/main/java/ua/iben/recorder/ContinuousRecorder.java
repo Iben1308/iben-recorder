@@ -33,6 +33,7 @@ final class ContinuousRecorder {
     private final int bitrate;
     private final int minutes;
     private final AudioGain gain;
+    private final CaptureEnvelope envelope;
     private final ArrayBlockingQueue<short[]> pcm = new ArrayBlockingQueue<>(64);
     private final ArrayBlockingQueue<Packet> packets = new ArrayBlockingQueue<>(512);
     private final AtomicReference<Throwable> failure = new AtomicReference<>();
@@ -55,6 +56,7 @@ final class ContinuousRecorder {
         this.config = config; this.files = files; this.listener = listener;
         rate = config.sampleRate(); bitrate = config.bitrate(); minutes = config.minutes();
         gain = new AudioGain(config.gainDb());
+        envelope = new CaptureEnvelope(rate, minutes);
     }
     void start() { new Thread(this::run, "iben-aac").start(); }
     void stop() {
@@ -85,9 +87,9 @@ final class ContinuousRecorder {
             files.recover();
             long budget = StoragePolicy.segmentBudget(minutes, bitrate);
             if (2 * budget > config.quota())
-                throw new IOException("Збільште ліміт пам’яті: він має вміщувати два фрагменти із запасом");
+                throw new StorageFullException("Збільште ліміт пам’яті: він має вміщувати два фрагменти із запасом");
             if (!files.ensureRoom(2 * budget))
-                throw new IOException("Недостатньо місця для фрагмента; очікування вільної пам’яті");
+                throw new StorageFullException("Недостатньо місця для фрагмента; очікування вільної пам’яті");
             if (stopRequested) return;
             int min = AudioRecord.getMinBufferSize(rate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT);
             if (min <= 0) throw new IOException("Мікрофон не підтримує обрану частоту");
@@ -198,6 +200,7 @@ final class ContinuousRecorder {
                         long pts = SegmentTimeline.sampleTimeUs(submitted, rate);
                         for (int i = 0; i < count; i++) input.putShort(block[offset + i]);
                         codec.queueInputBuffer(slot, 0, count * 2, pts, block == null ? MediaCodec.BUFFER_FLAG_END_OF_STREAM : 0);
+                        if (block != null) envelope.add(block, offset, count);
                         submitted += count;
                         if (block == null) { inputEos = true; eosAt = SystemClock.elapsedRealtime(); }
                         else { offset += count; if (offset == block.length) block = null; }
@@ -285,7 +288,7 @@ final class ContinuousRecorder {
                 lastWrite = SystemClock.elapsedRealtime();
                 if (lastWrite - storageAt >= 30000L) {
                     storageAt = lastWrite;
-                    if (!files.ensureRoom(2 * StoragePolicy.MIB)) throw new IOException("Досягнуто ліміт пам’яті або вільного місця");
+                    if (!files.ensureRoom(2 * StoragePolicy.MIB)) throw new StorageFullException("Досягнуто ліміт пам’яті або вільного місця");
                 }
             }
         } catch (Exception e) { fail(e); }
@@ -325,6 +328,7 @@ final class ContinuousRecorder {
         }
     }
     private void finishAsync(ThreadPoolExecutor executor, Segment segment, long end) {
+        final float[] waveform = envelope.range(segment.first, end);
         finishing.incrementAndGet();
         Runnable task = () -> {
             boolean stopped = false;
@@ -339,7 +343,7 @@ final class ContinuousRecorder {
             finally {
                 try { segment.muxer.release(); } catch (Exception e) { stopped = false; fail(e); }
                 try {
-                    if (stopped) files.finish(segment.part); else files.failed(segment.part);
+                    if (stopped) files.finish(segment.part, waveform); else files.failed(segment.part);
                 } catch (Exception e) { fail(e); }
                 finally { finishing.decrementAndGet(); }
             }

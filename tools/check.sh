@@ -22,12 +22,17 @@ java --module jdk.compiler/com.sun.tools.javac.Main --release 8 -d "$classes_dir
   "$project_dir/tools/FeaturesTest.java" \
   "$project_dir/app/src/main/java/ua/iben/recorder/PlatformPolicy.java" \
   "$project_dir/app/src/main/java/ua/iben/recorder/BoundedCopy.java" \
-  "$project_dir/tools/CompatibilityTest.java"
+  "$project_dir/tools/CompatibilityTest.java" \
+  "$project_dir/app/src/main/java/ua/iben/recorder/PlaybackProgress.java" \
+  "$project_dir/app/src/main/java/ua/iben/recorder/CaptureEnvelope.java" \
+  "$project_dir/app/src/main/java/ua/iben/recorder/IncidentPolicy.java" \
+  "$project_dir/tools/WorkflowTest.java"
 java -cp "$classes_dir" ua.iben.recorder.StoragePolicyTest
 java -cp "$classes_dir" ua.iben.recorder.AudioCoreTest
 java --add-modules jdk.httpserver -cp "$classes_dir" ua.iben.recorder.WebDavTest
 java -cp "$classes_dir" ua.iben.recorder.FeaturesTest
 java -cp "$classes_dir" ua.iben.recorder.CompatibilityTest
+java -cp "$classes_dir" ua.iben.recorder.WorkflowTest
 java --module jdk.compiler/com.sun.tools.javac.Main -d "$classes_dir" "$project_dir/tools/JavaSyntaxCheck.java"
 mapfile -t java_sources < <(find "$project_dir/app/src/main/java" -name '*.java' -type f)
 java -cp "$classes_dir" JavaSyntaxCheck "${java_sources[@]}"
@@ -49,6 +54,11 @@ for p in manifest.findall('uses-permission'):
         assert p.get(ns+'maxSdkVersion') == '28'
 recorder = next(s for s in manifest.find('application').findall('service') if s.get(ns+'name').endswith('RecorderService'))
 assert recorder.get(ns+'foregroundServiceType') == 'microphone'
+wave = next(s for s in manifest.find('application').findall('service') if s.get(ns+'name').endswith('WaveformService'))
+assert wave.get(ns+'foregroundServiceType') == 'dataSync|mediaProcessing'
+assert wave.get(ns+'exported') == 'false' and wave.get(ns+'stopWithTask') == 'false'
+for permission in ['FOREGROUND_SERVICE_DATA_SYNC','FOREGROUND_SERVICE_MEDIA_PROCESSING']:
+    assert 'android.permission.'+permission in permissions
 gradle=(root/'app/build.gradle').read_text()
 assert re.search(r'minSdk\s+27', gradle) and re.search(r'targetSdk\s+35', gradle)
 assert "applicationId 'ua.iben.recorder.oreo'" in gradle
@@ -70,4 +80,17 @@ db.execute("INSERT INTO records(id,start_ms,zone,final_name,state) VALUES('origi
 for sql in statements[1:]: db.execute(sql)
 assert db.execute('SELECT id,final_name,state,verified_target,verified_size,verified_hash FROM records').fetchone() == ('original','original.m4a',2,None,-1,None)
 print('PASS: SQLite upgrade keeps old recordings and leaves them unverified/protected')
+assert db.execute('SELECT playback_ms,listened,heard_ranges FROM records').fetchone() == (0,0,'')
+playback = [sql for sql in statements if any('ADD COLUMN '+c+' ' in sql for c in ['playback_ms','listened','heard_ranges'])]
+assert len(playback)==3 and 'oldVersion < 2' in source and 'oldVersion < 3' in source
+v2 = sqlite3.connect(':memory:')
+for sql in statements:
+    if sql not in playback: v2.execute(sql)
+v2.execute("INSERT INTO records(id,start_ms,zone,final_name,state,verified_target,verified_size,verified_hash) VALUES('verified',123,'Europe/Kyiv','old.m4a',2,'target',4096,'sha256')")
+before=v2.execute('SELECT * FROM records').fetchone()
+for sql in playback:v2.execute(sql)
+assert v2.execute('SELECT * FROM records').fetchone()==before+(0,0,'')
+v2.execute("UPDATE records SET playback_ms=12000,listened=1,heard_ranges='0:12000' WHERE id='verified' AND state=2")
+assert v2.execute('SELECT id,state,verified_target,verified_size,verified_hash,playback_ms,listened,heard_ranges FROM records').fetchone()==('verified',2,'target',4096,'sha256',12000,1,'0:12000')
+print('PASS: SQLite v1/v2 to v3 preserves recordings and cloud receipts; playback metadata stays independent')
 PY

@@ -133,3 +133,36 @@ restore_done	Відновлено доступ до записів: %d	Recording
 restore_stop	Спочатку зупиніть запис і призупиніть розклад	Stop recording and pause the schedule first	Najpierw zatrzymaj nagrywanie i wstrzymaj harmonogram
 restore_space	Для копіювання недостатньо місця в межах ліміту записів	Not enough space within the recording limit to copy	Za mało miejsca w limicie nagrań na kopiowanie
 restore_busy	Зачекайте завершення підключення старої папки	Wait for the old folder reconnection to finish	Poczekaj na zakończenie podłączania starego folderu
+general	Загальні	General	Ogólne
+schedule_tab	Розклад	Schedule	Harmonogram
+schedule_pause_only	Призупинити розклад	Pause schedule	Wstrzymaj harmonogram
+schedule_toggle_hint	Призупинення зберігає дні та години. Ручний запис продовжується. Зміни часу застосовуються кнопкою «Зберегти розклад».	Pausing keeps days and times. Manual recording continues. Apply time changes with Save schedule.	Wstrzymanie zachowuje dni i godziny. Nagrywanie ręczne trwa dalej. Zmiany czasu zatwierdź przyciskiem Zapisz harmonogram.
+notifications	Сповіщення	Notifications	Powiadomienia
+problem_alerts	Сповіщення про проблеми	Problem notifications	Powiadomienia o problemach
+problem_alerts_hint	Помилки запису та нестача місця — одразу. Повторні збої Nextcloud — після 30 хвилин. Очікування Wi-Fi не є помилкою. Одне сповіщення до усунення проблеми.	Recording and storage errors appear immediately. Repeated Nextcloud failures alert after 30 minutes. Waiting for Wi-Fi is normal. One alert until the problem is resolved.	Błędy nagrywania i brak miejsca są zgłaszane od razu. Powtarzające się błędy Nextcloud — po 30 minutach. Oczekiwanie na Wi-Fi jest normalne. Jeden alert do rozwiązania problemu.
+problem_record	Iben Recorder: помилка запису	Iben Recorder: recording error	Iben Recorder: błąd nagrywania
+problem_record_detail	Запис перервався або не почався. Відкрийте застосунок, щоб переглянути стан і журнал.	Recording stopped unexpectedly or could not start. Open the app to check its status and log.	Nagrywanie przerwało się lub nie mogło się rozpocząć. Otwórz aplikację, aby sprawdzić stan i dziennik.
+problem_storage	Iben Recorder: недостатньо місця	Iben Recorder: insufficient storage	Iben Recorder: za mało miejsca
+problem_storage_detail	Запис не може продовжитися через ліміт або нестачу місця. Непередані файли захищені. Перевірте пам’ять і Nextcloud.	Recording cannot continue because of the quota or low storage. Unuploaded files are protected. Check storage and Nextcloud.	Nagrywanie nie może być kontynuowane z powodu limitu lub braku miejsca. Niewysłane pliki są chronione. Sprawdź pamięć i Nextcloud.
+problem_cloud	Iben Recorder: проблема з Nextcloud	Iben Recorder: Nextcloud problem	Iben Recorder: problem z Nextcloud
+problem_cloud_detail	Повторні спроби передачі не вдаються понад 30 хвилин. Записи збережені на телефоні. Перевірте підключення в налаштуваннях.	Repeated upload attempts have failed for over 30 minutes. Recordings remain on the phone. Check the connection in Settings.	Kolejne próby wysyłania nie powiodły się przez ponad 30 minut. Nagrania pozostają w telefonie. Sprawdź połączenie w ustawieniach.
+filter_all	Усі	All	Wszystkie
+filter_unlistened	Непрослухані	Unlistened	Nieodsłuchane
+filter_listened	Прослухані	Listened	Odsłuchane
+mark_listened	Позначити як прослухане	Mark as listened	Oznacz jako odsłuchane
+mark_unlistened	Позначити як непрослухане	Mark as unlistened	Oznacz jako nieodsłuchane
+record_filter	Фільтр записів	Recording filter	Filtr nagrań
+no_filter_matches	У цьому фільтрі записів немає	No recordings match this filter	Brak nagrań dla tego filtra
+today	Сьогодні	Today	Dzisiaj
+yesterday	Вчора	Yesterday	Wczoraj
+day_recordings	Записів: %d · разом %s	Recordings: %d · total %s	Nagrania: %d · łącznie %s
+resume_at	Зупинено на %s	Resume at %s	Wznów od %s
+wave_loading	Завантаження шкали…	Loading waveform…	Wczytywanie wykresu…
+wave_building	Побудова шкали звуку	Building audio waveform	Tworzenie wykresu dźwięku
+wave_background	Можна згорнути застосунок. Аудіофайл залишається без змін.	You can minimize the app. The audio file stays unchanged.	Możesz zminimalizować aplikację. Plik audio pozostaje bez zmian.
+wave_start_failed	Відкрийте застосунок і повторіть побудову шкали.	Open the app and retry building the waveform.	Otwórz aplikację i ponów tworzenie wykresu.
+wave_time_limit	Побудову зупинено через ліміт часу.	Waveform processing stopped at its time limit.	Przetwarzanie wykresu zatrzymano z powodu limitu czasu.
+wave_canceled	Побудову шкали скасовано.	Waveform processing was canceled.	Tworzenie wykresu anulowano.
+wave_start_hint	Торкніться, щоб побудувати шкалу звуку.	Tap to build the audio waveform.	Dotknij, aby utworzyć wykres dźwięku.
+wave_retry	Торкніться цього повідомлення, щоб повторити.	Tap this message to retry.	Dotknij tego komunikatu, aby ponowić próbę.
+cancel	Скасувати	Cancel	Anuluj

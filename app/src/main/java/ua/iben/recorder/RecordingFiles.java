@@ -108,7 +108,7 @@ final class RecordingFiles implements AutoCloseable {
 
     Part create(long start, String zone, long budget) throws IOException {
         synchronized (LOCK) {
-            if (!ensureRoom(budget)) throw new IOException("Недостатньо місця для наступного фрагмента");
+            if (!ensureRoom(budget)) throw new StorageFullException("Недостатньо місця для наступного фрагмента");
             String id = UUID.randomUUID().toString();
             File f = temp(id);
             index.create(id, start, zone);
@@ -118,7 +118,8 @@ final class RecordingFiles implements AutoCloseable {
     }
 
     /** Caller has already stopped AND released the muxer. No media operation holds the quota lock. */
-    void finish(Part part) throws IOException {
+    void finish(Part part) throws IOException { finish(part, null); }
+    void finish(Part part, float[] envelope) throws IOException {
         long duration = duration(part.file);
         if (duration <= 0) {
             synchronized (LOCK) { index.state(part.id, RecordIndex.FAILED); }
@@ -137,6 +138,9 @@ final class RecordingFiles implements AutoCloseable {
             move(part.file, target);
             index.state(part.id, RecordIndex.PUBLISHED);
         }
+        if (envelope != null && envelope.length > 0) try {
+            WaveformAnalyzer.store(context, target, new WaveformAnalyzer.Data(duration, envelope));
+        } catch (Exception e) { AppLog.write(context, "Waveform cache: " + e.getClass().getSimpleName()); }
         scan(target);
         AppLog.write(context, "Готовий файл: " + target.getName() + " (" + target.length() + " байтів)");
         SyncScheduler.kick(context);
@@ -262,9 +266,13 @@ final class RecordingFiles implements AutoCloseable {
         final File file;
         final long start, duration, bytes;
         final boolean uploaded;
+        long position;
+        boolean listened;
+        String heardRanges;
         Item(RecordIndex.Entry e, File f, boolean uploaded) {
             id = e.id; name = e.finalName; file = f; start = e.start; duration = e.duration;
             bytes = f.length(); this.uploaded = uploaded;
+            position=PlaybackProgress.resume(e.position,duration);listened=e.listened;heardRanges=e.heardRanges;
         }
     }
     List<Item> recordings() throws IOException {

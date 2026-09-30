@@ -25,43 +25,47 @@ final class WaveformAnalyzer {
     private static void check() throws InterruptedIOException {
         if (Thread.currentThread().isInterrupted()) throw new InterruptedIOException("Analysis canceled");
     }
-    static Data read(Context context, File source, long duration, Progress progress) throws Exception {
-        long length = source.length(), modified = source.lastModified();
+    private static File cacheFile(Context context, File source) throws Exception {
         File folder = new File(context.getCacheDir(), "waveforms");
         if (!folder.isDirectory() && !folder.mkdirs()) throw new IOException("Не вдалося створити кеш шкали");
         String hash = DavTarget.hex(MessageDigest.getInstance("SHA-256").digest(
-                (source.getAbsolutePath() + "\n" + length + "\n" + modified).getBytes(StandardCharsets.UTF_8)));
-        File cached = new File(folder, hash + ".wave");
-        if (cached.isFile()) try (DataInputStream in = new DataInputStream(new BufferedInputStream(new FileInputStream(cached)))) {
+                (source.getAbsolutePath() + "\n" + source.length() + "\n" + source.lastModified()).getBytes(StandardCharsets.UTF_8)));
+        return new File(folder, hash + ".wave");
+    }
+    static Data cached(Context context, File source) throws Exception {
+        File cached = cacheFile(context, source); if (!cached.isFile()) return null;
+        try (DataInputStream in = new DataInputStream(new BufferedInputStream(new FileInputStream(cached)))) {
             if (in.readInt() != MAGIC) throw new IOException();
             long storedDuration = in.readLong(); int n = in.readInt();
-            if (n <= 0 || n > 100000 || cached.length() != 16L + n * 4L || storedDuration <= 0) throw new IOException();
+            if (n <= 0 || n > 100000 || cached.length() != 16L+n*4L || storedDuration <= 0) throw new IOException();
             float[] db = new float[n];
-            for (int i = 0; i < n; i++) { db[i] = in.readFloat(); if (!Float.isFinite(db[i])) throw new IOException(); }
-            check(); return new Data(storedDuration, db);
+            for (int i=0;i<n;i++) { db[i]=in.readFloat(); if(!Float.isFinite(db[i]))throw new IOException(); }
+            check(); cached.setLastModified(System.currentTimeMillis()); return new Data(storedDuration,db);
         } catch (InterruptedIOException e) { throw e; }
-          catch (IOException ignored) { cached.delete(); }
-        Data data = decode(source, duration, progress);
-        check();
-        if (source.length() != length || source.lastModified() != modified) throw new IOException("Локальний файл змінився");
-        File temporary = File.createTempFile("wave-", ".tmp", folder);
+        catch (IOException ignored) { cached.delete(); return null; }
+    }
+    static Data read(Context context, File source, long duration, Progress progress) throws Exception {
+        Data data=cached(context,source); if(data!=null)return data;
+        long length=source.length(),modified=source.lastModified(); data=decode(source,duration,progress);check();
+        if(source.length()!=length || source.lastModified()!=modified)throw new IOException("Локальний файл змінився");
+        store(context,source,data);return data;
+    }
+    static synchronized void store(Context context, File source, Data data) throws Exception {
+        if(data.duration<=0 || data.db.length==0 || data.db.length>100000)return;
+        File cached=cacheFile(context,source),folder=cached.getParentFile();
+        File temporary=File.createTempFile("wave-",".tmp",folder);
         try {
-            try (DataOutputStream out = new DataOutputStream(new BufferedOutputStream(new FileOutputStream(temporary)))) {
-                out.writeInt(MAGIC); out.writeLong(data.duration); out.writeInt(data.db.length);
-                for (float db : data.db) out.writeFloat(db);
+            try(DataOutputStream out=new DataOutputStream(new BufferedOutputStream(new FileOutputStream(temporary)))) {
+                out.writeInt(MAGIC);out.writeLong(data.duration);out.writeInt(data.db.length);
+                for(float db:data.db)out.writeFloat(db);
             }
-            check();
-            if (!temporary.renameTo(cached)) throw new IOException("Не вдалося зберегти шкалу");
+            check(); if(!temporary.renameTo(cached))throw new IOException("Не вдалося зберегти шкалу");
         } finally { temporary.delete(); }
-        File[] files = folder.listFiles();
-        if (files != null) {
-            Arrays.sort(files, Comparator.comparingLong(File::lastModified));
-            long bytes = 0; for (File file : files) bytes += file.length();
-            for (File file : files) if (bytes > 32 * 1024 * 1024L && !file.equals(cached)) {
-                long size = file.length(); if (file.delete()) bytes -= size;
-            }
+        File[] files=folder.listFiles((dir,name)->name.endsWith(".wave"));
+        if(files!=null){
+            Arrays.sort(files,Comparator.comparingLong(File::lastModified));long bytes=0;for(File file:files)bytes+=file.length();
+            for(File file:files)if(bytes>32*1024*1024L && !file.equals(cached)){long size=file.length();if(file.delete())bytes-=size;}
         }
-        return data;
     }
     private static Data decode(File file, long duration, Progress progress) throws Exception {
         MediaExtractor extractor = new MediaExtractor(); MediaCodec codec = null;

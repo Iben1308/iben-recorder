@@ -18,13 +18,17 @@ import java.util.List;
 import java.util.Locale;
 
 final class SettingsPanel {
-    final ScrollView view;
+    final LinearLayout view;
+    private final ScrollView[] sections = new ScrollView[4];
+    private final Button[] sectionButtons = new Button[4];
+    private final Button scheduleToggle;
+    private int currentSection;
     private final MainActivity activity;
     private final Ui ui;
     private final Config config;
     private final EditText minutes, quota;
     private final Spinner bitrate, rate, source, device;
-    private final Switch cleanup, boot, scheduled;
+    private final Switch cleanup, boot;
     private final Switch[] days = new Switch[7];
     private final int[] from = new int[7], to = new int[7];
     private final Button[] fromButtons = new Button[7], toButtons = new Button[7];
@@ -34,9 +38,22 @@ final class SettingsPanel {
     private List<AudioInputs.Choice> inputs;
     SettingsPanel(MainActivity activity, Ui ui, Config config, Bundle draft) {
         this.activity = activity; this.ui = ui; this.config = config;
-        view = new ScrollView(activity); LinearLayout page = ui.column();
-        page.setPadding(ui.dp(16), ui.dp(12), ui.dp(16), ui.dp(12)); view.addView(page);
-        LinearLayout look = ui.card(page); ui.title(look, I18n.s("appearance"));
+        view = ui.column();
+        LinearLayout navigation = ui.row(); navigation.setPadding(ui.dp(8), 0, ui.dp(8), 0); view.addView(navigation);
+        FrameLayout content = new FrameLayout(activity); view.addView(content, new LinearLayout.LayoutParams(-1, 0, 1));
+        LinearLayout[] pages = new LinearLayout[4];
+        String[] labels = {I18n.s("general"), I18n.s("sound"), I18n.s("schedule_tab"), "Nextcloud"};
+        for (int i = 0; i < sections.length; i++) {
+            final int index = i;
+            sectionButtons[i] = ui.button(null, labels[i], () -> showSection(index), false);
+            sectionButtons[i].setTextSize(12); sectionButtons[i].setMinWidth(0); sectionButtons[i].setMinimumWidth(0);
+            sectionButtons[i].setPadding(ui.dp(4), 0, ui.dp(4), 0);
+            navigation.addView(sectionButtons[i], new LinearLayout.LayoutParams(0, ui.dp(52), 1));
+            sections[i] = new ScrollView(activity); pages[i] = ui.column();
+            pages[i].setPadding(ui.dp(16), ui.dp(12), ui.dp(16), ui.dp(12)); sections[i].addView(pages[i]);
+            content.addView(sections[i], new FrameLayout.LayoutParams(-1, -1));
+        }
+        LinearLayout look = ui.card(pages[0]); ui.title(look, I18n.s("appearance"));
         ui.text(look, I18n.s("language"), 13, ui.muted);
         String[] codes = {"uk", "en", "pl"}; int languageIndex = 0;
         for (int i = 0; i < codes.length; i++) if (codes[i].equals(config.language())) languageIndex = i;
@@ -50,7 +67,7 @@ final class SettingsPanel {
         Spinner theme = ui.spinner(look, new String[]{I18n.s("system"), I18n.s("light"), I18n.s("dark")}, config.theme());
         theme.setOnItemSelectedListener(selection(p -> { if (p != config.theme()) { config.theme(p); activity.recreate(); } }));
 
-        LinearLayout audio = ui.card(page); ui.title(audio, I18n.s("record_settings"));
+        LinearLayout audio = ui.card(pages[1]); ui.title(audio, I18n.s("record_settings"));
         minutes = number(audio, I18n.s("segment_minutes"), draft == null ? String.valueOf(config.minutes()) : draft.getString("draft_minutes", String.valueOf(config.minutes())));
         quota = number(audio, I18n.s("quota_mib"), draft == null ? String.valueOf(config.quotaMiB()) : draft.getString("draft_quota", String.valueOf(config.quotaMiB())));
         String[] bitrates = {"64", "96", "128", "192", "256"};
@@ -78,9 +95,15 @@ final class SettingsPanel {
         for (View control : new View[]{minutes, quota, bitrate, rate, source, device, detect, cleanup, boot, save}) recordingControls.add(control);
         ui.text(audio, I18n.s("settings_stop_hint"), 12, ui.muted);
 
-        LinearLayout schedule = ui.card(page); ui.title(schedule, I18n.s("weekly_schedule"));
-        scheduled = ui.toggle(schedule, I18n.s("enable_schedule"), draft == null ? config.scheduleEnabled() : draft.getBoolean("draft_schedule", config.scheduleEnabled()));
+        LinearLayout schedule = ui.card(pages[2]); ui.title(schedule, I18n.s("weekly_schedule"));
         scheduleStatus = ui.text(schedule, "", 13, ui.accent);
+        scheduleToggle = ui.button(schedule, "", () -> {
+            if (scheduleArmed()) { ScheduleManager.pauseSchedule(activity); refresh(); }
+            else activity.recordingPermission(() -> {
+                if (saveSchedule(true)) { ScheduleManager.activateSchedule(activity); refresh(); }
+            });
+        }, true);
+        ui.text(schedule, I18n.s("schedule_toggle_hint"), 12, ui.muted);
         WeeklySchedule.Day[] existing = config.days();
         for (int i = 0; i < 7; i++) {
             final int day = i;
@@ -100,19 +123,9 @@ final class SettingsPanel {
         ui.button(schedule, I18n.s("allow_notifications"), () -> {
             try { Platform.notificationSettings(activity); } catch (RuntimeException e) { ui.toast(I18n.s("notification_required")); }
         }, false);
-        ui.button(schedule, I18n.s("resume_schedule"), () -> activity.recordingPermission(() -> {
-            if (!config.scheduleEnabled()) { ui.toast(I18n.s("schedule_off")); return; }
-            config.prefs.edit().putBoolean("schedule_paused", false).putLong("schedule_skip", 0).commit();
-            ScheduleManager.reconcile(activity, true); refresh();
-        }), false);
-        ui.button(schedule, I18n.s("pause_schedule"), () -> {
-            ScheduleManager.pauseAll(activity); ScheduleManager.wake(activity); refresh();
-        }, false);
-        ui.button(schedule, I18n.s("save_schedule"), () -> {
-            if (scheduled.isChecked()) activity.recordingPermission(this::saveSchedule); else saveSchedule();
-        }, true);
+        ui.button(schedule, I18n.s("save_schedule"), () -> saveSchedule(false), false);
 
-        LinearLayout playback = ui.card(page); ui.title(playback, I18n.s("silence"));
+        LinearLayout playback = ui.card(pages[1]); ui.title(playback, I18n.s("silence"));
         TextView silence = ui.text(playback, I18n.s("silence_threshold", config.silenceDb()), 14, ui.ink);
         SeekBar threshold = new SeekBar(activity); threshold.setMax(40); threshold.setProgress(config.silenceDb() + 60); playback.addView(threshold);
         threshold.setContentDescription(I18n.s("silence"));
@@ -126,7 +139,7 @@ final class SettingsPanel {
         });
         ui.text(playback, I18n.s("silence_hint"), 12, ui.muted);
 
-        LinearLayout storage = ui.card(page); ui.title(storage, "Nextcloud · WebDAV");
+        LinearLayout storage = ui.card(pages[3]); ui.title(storage, "Nextcloud · WebDAV");
         cloudStatus = ui.text(storage, "", 13, ui.muted);
         ui.button(storage, I18n.s("cloud_connection"), () -> activity.startActivity(new Intent(activity, CloudActivity.class)), true);
         ui.text(storage, RecordingFiles.outputDirectory(activity).getAbsolutePath(), 12, ui.muted).setTextIsSelectable(true);
@@ -139,7 +152,17 @@ final class SettingsPanel {
             ui.button(storage, I18n.s("restore_folder"), activity::restoreFolder, false);
             ui.text(storage, I18n.s("restore_hint"), 12, ui.muted);
         }
-        LinearLayout system = ui.card(page); ui.title(system, I18n.s("service"));
+        LinearLayout notices = ui.card(pages[0]); ui.title(notices, I18n.s("notifications"));
+        Switch alerts = ui.toggle(notices, I18n.s("problem_alerts"), ProblemNotifications.enabled(activity));
+        alerts.setOnCheckedChangeListener((button, enabled) -> {
+            config.prefs.edit().putBoolean("problem_alerts", enabled).apply();
+            if (enabled) activity.notificationPermission(() -> { }); else ProblemNotifications.reset(activity);
+        });
+        ui.text(notices, I18n.s("problem_alerts_hint"), 12, ui.muted);
+        ui.button(notices, I18n.s("allow_notifications"), () -> {
+            try { Platform.notificationSettings(activity); } catch (RuntimeException e) { ui.toast(I18n.s("notification_required")); }
+        }, false);
+        LinearLayout system = ui.card(pages[0]); ui.title(system, I18n.s("service"));
         ui.button(system, I18n.s("battery"), () -> {
             try { activity.startActivity(new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)); }
             catch (RuntimeException e) { ui.toast(I18n.s("battery_manual")); }
@@ -150,7 +173,8 @@ final class SettingsPanel {
             ScrollView scroll = new ScrollView(activity); scroll.addView(text);
             new AlertDialog.Builder(activity).setTitle(I18n.s("log")).setView(scroll).setPositiveButton(I18n.s("close"), null).show();
         }, false);
-        ui.text(system, "Iben Recorder · 0.5-universal.1 · Android 8.1+", 12, ui.muted); refresh();
+        ui.text(system, "Iben Recorder · 0.6 · Android 8.1+", 12, ui.muted);
+        showSection(draft == null ? config.prefs.getInt("settings_section", 0) : draft.getInt("draft_section", 0)); refresh();
     }
     private interface Selected { void value(int position); }
     private AdapterView.OnItemSelectedListener selection(Selected action) {
@@ -191,14 +215,29 @@ final class SettingsPanel {
         fromButtons[i].setText(I18n.s("from") + " " + String.format(Locale.ROOT, "%02d:%02d", from[i] / 60, from[i] % 60));
         toButtons[i].setText(I18n.s("to") + " " + String.format(Locale.ROOT, "%02d:%02d", to[i] / 60, to[i] % 60) + (to[i] <= from[i] ? " +1" : ""));
     }
-    private void saveSchedule() {
+    private boolean scheduleArmed() { return config.scheduleEnabled() && !config.prefs.getBoolean("schedule_paused", false); }
+    void showSection(int index) {
+        currentSection = Math.max(0, Math.min(sections.length - 1, index));
+        for (int i = 0; i < sections.length; i++) {
+            sections[i].setVisibility(i == currentSection ? View.VISIBLE : View.GONE);
+            sectionButtons[i].setBackgroundTintList(android.content.res.ColorStateList.valueOf(i == currentSection ? ui.accent : ui.pale));
+            sectionButtons[i].setTextColor(i == currentSection ? ui.background : ui.accent);
+            sectionButtons[i].setSelected(i == currentSection);
+        }
+        config.prefs.edit().putInt("settings_section", currentSection).apply();
+    }
+    private boolean saveSchedule(boolean activating) {
         WeeklySchedule.Day[] rules = new WeeklySchedule.Day[7]; boolean any = false;
         for (int i = 0; i < 7; i++) { rules[i] = new WeeklySchedule.Day(days[i].isChecked(), from[i], to[i]); any |= rules[i].enabled; }
-        if (scheduled.isChecked() && !any) { ui.toast(I18n.s("choose_day")); return; }
-        try { config.schedule(scheduled.isChecked(), rules); ScheduleManager.reconcile(activity, true); ui.toast(I18n.s("saved")); refresh(); }
-        catch (Exception e) { ui.toast(e.getMessage()); }
+        if ((activating || scheduleArmed()) && !any) { ui.toast(I18n.s("choose_day")); return false; }
+        try {
+            config.schedule(rules);
+            if (!activating) { ScheduleManager.reconcile(activity, true); ui.toast(I18n.s("saved")); }
+            refresh(); return true;
+        } catch (Exception e) { ui.toast(e.getMessage()); return false; }
     }
     void refresh() {
+        scheduleToggle.setText(I18n.s(scheduleArmed() ? "schedule_pause_only" : "resume_schedule"));
         boolean stale = System.currentTimeMillis() - config.prefs.getLong("heartbeat", 0) > 90000;
         boolean running = config.wanted() || (config.prefs.getBoolean("engine_active", false) && !stale);
         for (View control : recordingControls) control.setEnabled(!running);
@@ -223,7 +262,7 @@ final class SettingsPanel {
         state.putString("draft_minutes", minutes.getText().toString()); state.putString("draft_quota", quota.getText().toString());
         state.putInt("draft_bitrate", bitrate.getSelectedItemPosition()); state.putInt("draft_rate", rate.getSelectedItemPosition());
         state.putInt("draft_source", sourceIds.get(source.getSelectedItemPosition())); state.putString("draft_input", selectedInput());
-        state.putBoolean("draft_cleanup", cleanup.isChecked()); state.putBoolean("draft_boot", boot.isChecked()); state.putBoolean("draft_schedule", scheduled.isChecked());
+        state.putBoolean("draft_cleanup", cleanup.isChecked()); state.putBoolean("draft_boot", boot.isChecked()); state.putInt("draft_section", currentSection);
         for (int i = 0; i < 7; i++) { state.putBoolean("draft_day_" + i, days[i].isChecked()); state.putInt("draft_from_" + i, from[i]); state.putInt("draft_to_" + i, to[i]); }
     }
 }

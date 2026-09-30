@@ -28,7 +28,7 @@ final class WaveformView extends View {
     void threshold(int db) { silent = AudioEnvelope.silence(values, db); invalidate(); }
     int zoom() { zoom = zoom == 1 ? 4 : zoom == 4 ? 16 : 1; center(); invalidate(); return zoom; }
     void position(long millis) {
-        position = Math.min(duration, Math.max(0, millis));
+        long value=Math.min(duration,Math.max(0,millis)); if(position==value)return; position=value;
         if (position < from || position > from + window()) center();
         invalidate();
     }

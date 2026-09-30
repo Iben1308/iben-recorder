@@ -59,7 +59,9 @@ public final class MainActivity extends Activity {
         setContentView(root); Platform.insets(this, root, ui.dark);
         exportId = state == null ? null : state.getString("export_id");
         int selected = state != null ? state.getInt("tab", 1) : getIntent().getIntExtra("tab", config.prefs.getInt("last_tab", 1));
-        tab(Math.max(0, Math.min(2, selected))); refresh();
+        tab(Math.max(0, Math.min(2, selected)));
+        if(state==null && getIntent().hasExtra("settings_section"))settings.showSection(getIntent().getIntExtra("settings_section",0));
+        refresh();
     }
     private View recordPage() {
         ScrollView scroll = new ScrollView(this); scroll.setFillViewport(true);
@@ -113,7 +115,7 @@ public final class MainActivity extends Activity {
         if (index == 0 && resumed) listen.load();
         if (index == 2) settings.refresh();
     }
-    @Override protected void onNewIntent(Intent intent) { super.onNewIntent(intent); setIntent(intent); if (intent.hasExtra("tab")) tab(intent.getIntExtra("tab", 1)); }
+    @Override protected void onNewIntent(Intent intent) { super.onNewIntent(intent); setIntent(intent); if (intent.hasExtra("tab")) tab(Math.max(0,Math.min(2,intent.getIntExtra("tab", 1)))); if(intent.hasExtra("settings_section"))settings.showSection(intent.getIntExtra("settings_section",0)); }
     @Override protected void onSaveInstanceState(Bundle state) {
         super.onSaveInstanceState(state); state.putString("export_id", exportId); state.putInt("tab", currentTab); settings.saveDraft(state);
     }
