@@ -26,11 +26,18 @@ final class WaveformAnalyzer {
         if (Thread.currentThread().isInterrupted()) throw new InterruptedIOException("Analysis canceled");
     }
     private static File cacheFile(Context context, File source) throws Exception {
+        return cacheFile(context, source.getAbsolutePath(), source.length(), source.lastModified());
+    }
+    private static File cacheFile(Context context, String path, long size, long modified) throws Exception {
         File folder = new File(context.getCacheDir(), "waveforms");
         if (!folder.isDirectory() && !folder.mkdirs()) throw new IOException("Не вдалося створити кеш шкали");
         String hash = DavTarget.hex(MessageDigest.getInstance("SHA-256").digest(
-                (source.getAbsolutePath() + "\n" + source.length() + "\n" + source.lastModified()).getBytes(StandardCharsets.UTF_8)));
+                (path + "\n" + size + "\n" + modified).getBytes(StandardCharsets.UTF_8)));
         return new File(folder, hash + ".wave");
+    }
+    static synchronized void forget(Context context, File source, long size, long modified) {
+        try { cacheFile(context, source.getAbsolutePath(), size, modified).delete(); }
+        catch (Exception e) { AppLog.write(context, "Waveform cache cleanup: " + e.getClass().getSimpleName()); }
     }
     static Data cached(Context context, File source) throws Exception {
         File cached = cacheFile(context, source); if (!cached.isFile()) return null;

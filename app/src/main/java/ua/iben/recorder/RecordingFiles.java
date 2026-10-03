@@ -221,7 +221,7 @@ final class RecordingFiles implements AutoCloseable {
             File f = e.state == RecordIndex.PUBLISHED ? published(e.finalName) : temp(e.id);
             if (e.state == RecordIndex.PUBLISHED || e.state == RecordIndex.FAILED) {
                 if (f.isFile()) {
-                    if (e.state == RecordIndex.PUBLISHED && isVerified(e, f, target) && !READERS.containsKey(f.getAbsolutePath())) s.add(f, e.id);
+                    if (e.state == RecordIndex.PUBLISHED && !e.important && isVerified(e, f, target) && !READERS.containsKey(f.getAbsolutePath())) s.add(f, e.id);
                     else s.pending += f.length();
                 }
                 // Keep inaccessible published rows; absence is not proof of deletion.
@@ -245,7 +245,7 @@ final class RecordingFiles implements AutoCloseable {
         return s;
     }
     private boolean isVerified(RecordIndex.Entry entry, File file, String target) {
-        return TransferPolicy.verified(target, entry.verifiedTarget, file.length(), entry.verifiedSize,
+        return !entry.cloudDeletes.containsKey(target) && TransferPolicy.verified(target, entry.verifiedTarget, file.length(), entry.verifiedSize,
                 file.lastModified(), entry.verifiedModified, entry.verifiedHash);
     }
     static final class Upload {
@@ -264,15 +264,20 @@ final class RecordingFiles implements AutoCloseable {
     static final class Item {
         final String id, name;
         final File file;
-        final long start, duration, bytes;
+        final long start, duration, bytes, modified;
         final boolean uploaded;
+        final String cloudTarget;
+        final int cloudDeleteState;
         long position;
         boolean listened;
+        boolean important;
         String heardRanges;
-        Item(RecordIndex.Entry e, File f, boolean uploaded) {
+        Item(RecordIndex.Entry e, File f, boolean uploaded, String target) {
             id = e.id; name = e.finalName; file = f; start = e.start; duration = e.duration;
-            bytes = f.length(); this.uploaded = uploaded;
-            position=PlaybackProgress.resume(e.position,duration);listened=e.listened;heardRanges=e.heardRanges;
+            bytes = f.length(); modified = f.lastModified(); this.uploaded = uploaded;
+            cloudTarget = target;
+            cloudDeleteState = !e.cloudDeletes.containsKey(target) ? 0 : e.cloudDeletes.get(target) ? 2 : 1;
+            position=PlaybackProgress.resume(e.position,duration);listened=e.listened;heardRanges=e.heardRanges;important=e.important;
         }
     }
     List<Item> recordings() throws IOException {
@@ -281,10 +286,110 @@ final class RecordingFiles implements AutoCloseable {
             String target = new CloudSettings(context).targetKey();
             for (RecordIndex.Entry e : index.all()) if (e.state == RecordIndex.PUBLISHED) {
                 File f = published(e.finalName);
-                if (f.isFile()) result.add(new Item(e, f, isVerified(e, f, target)));
+                if (f.isFile()) result.add(new Item(e, f, isVerified(e, f, target), target));
             }
             java.util.Collections.reverse(result);
             return result;
+        }
+    }
+    /** Only the explicitly confirmed, unchanged closed recording can be removed. No WebDAV DELETE. */
+    LocalDeletion.Result deleteLocal(Item expected, boolean allowUnverified, boolean allowImportant) throws IOException {
+        synchronized (LOCK) {
+            if (DocumentTransfers.restoring()) return LocalDeletion.Result.BUSY;
+            RecordIndex.Entry entry = null;
+            for (RecordIndex.Entry candidate : index.all()) if (candidate.id.equals(expected.id)) { entry = candidate; break; }
+            if (entry == null) return LocalDeletion.Result.MISSING;
+            if (entry.state != RecordIndex.PUBLISHED) return LocalDeletion.Result.NOT_READY;
+            if (entry.important && !allowImportant) return LocalDeletion.Result.PROTECTED;
+            File file = published(entry.finalName);
+            if (!entry.finalName.equals(expected.name) || !file.getCanonicalFile().equals(expected.file.getCanonicalFile()))
+                return LocalDeletion.Result.CHANGED;
+            LocalDeletion.Result result = LocalDeletion.remove(file, expected.bytes, expected.modified, true,
+                    READERS.containsKey(file.getAbsolutePath()),
+                    isVerified(entry, file, new CloudSettings(context).targetKey()), allowUnverified,entry.important,allowImportant);
+            if (result == LocalDeletion.Result.DELETED) {
+                index.remove(entry.id);
+                if (entry.id.equals(config.prefs.getString("last_recording", ""))) config.prefs.edit().remove("last_recording").apply();
+                WaveformAnalyzer.forget(context, file, expected.bytes, expected.modified);
+                scan(file);
+                AppLog.write(context, I18n.s("delete_log", file.getName()));
+            }
+            return result;
+        }
+    }
+    static final class CloudDelete implements AutoCloseable {
+        final String id, target, remoteName, hash;
+        final long size;
+        final Lease lease;
+        final boolean allowImportant;
+        CloudDelete(RecordIndex.Entry entry, String target, Lease lease, boolean allowImportant) {
+            this.allowImportant=allowImportant;
+            id=entry.id; this.target=target; remoteName=entry.remoteName == null ? entry.finalName : entry.remoteName;
+            size=entry.verifiedSize; hash=entry.verifiedHash; this.lease=lease;
+        }
+        @Override public void close() { lease.close(); }
+    }
+    CloudDelete prepareCloudDelete(Item expected, String target, boolean allowImportant) throws IOException {
+        synchronized (LOCK) {
+            if (!target.equals(expected.cloudTarget) || !target.equals(new CloudSettings(context).targetKey()))
+                throw new IOException(I18n.s("delete_changed"));
+            if (DocumentTransfers.restoring()) throw new IOException(I18n.s("delete_busy"));
+            for (RecordIndex.Entry entry : index.all()) if (entry.id.equals(expected.id)) {
+                if (entry.state != RecordIndex.PUBLISHED) throw new IOException(I18n.s("delete_not_ready"));
+                if(entry.important && !allowImportant)throw new IOException(I18n.s("important_protected"));
+                File file=published(entry.finalName);
+                if (!file.isFile() || !file.getCanonicalFile().equals(expected.file.getCanonicalFile())
+                        || file.length()!=expected.bytes || file.lastModified()!=expected.modified)
+                    throw new IOException(I18n.s("delete_changed"));
+                if (READERS.containsKey(file.getAbsolutePath())) throw new IOException(I18n.s("delete_busy"));
+                // Keep the original receipt after cloud deletion, to make a retry safe after a lost response.
+                if (!TransferPolicy.verified(target, entry.verifiedTarget, file.length(), entry.verifiedSize,
+                        file.lastModified(), entry.verifiedModified, entry.verifiedHash))
+                    throw new IOException(I18n.s("cloud_delete_no_receipt"));
+                Lease lease=lease(file);
+                try {
+                    index.beginCloudDelete(entry.id,target); // Durable before the first network operation.
+                    return new CloudDelete(entry,target,lease,allowImportant);
+                } catch (RuntimeException e) { lease.close(); throw e; }
+            }
+            throw new IOException(I18n.s("delete_missing"));
+        }
+    }
+    boolean cloudDeletionAllowed(CloudDelete deletion) {
+        synchronized(LOCK) { return deletion.allowImportant || !index.isImportant(deletion.id); }
+    }
+    boolean important(Item item, boolean value) {
+        synchronized(LOCK) { return item.file.isFile() && index.important(item.id,value); }
+    }
+    boolean listened(Item item, boolean value) {
+        synchronized(LOCK) { return item.file.isFile() && index.listened(item.id,value); }
+    }
+    boolean importantNow(String id) { synchronized(LOCK) { return index.isImportant(id); } }
+    LocalDeletion.Result cloudDeleted(CloudDelete deletion, Item item, boolean removeLocal) throws IOException {
+        synchronized (LOCK) {
+            index.finishCloudDelete(deletion.id,deletion.target);
+            if (!removeLocal) return null;
+            deletion.close(); // Release our reader and delete under the same lock.
+            return deleteLocal(item,true,deletion.allowImportant);
+        }
+    }
+    void resumeCloudUpload(Item item) throws IOException {
+        synchronized (LOCK) {
+            if (!item.cloudTarget.equals(new CloudSettings(context).targetKey())) throw new IOException(I18n.s("delete_changed"));
+            if (READERS.containsKey(item.file.getAbsolutePath())) throw new IOException(I18n.s("delete_busy"));
+            index.resumeCloudUpload(item.id,item.cloudTarget);
+        }
+    }
+    /** Claim a queued upload atomically against a user's deletion after the queue snapshot. */
+    Lease leaseUpload(Upload upload, String target) throws IOException {
+        synchronized (LOCK) {
+            for (RecordIndex.Entry entry : index.all()) if (entry.id.equals(upload.id)) {
+                if (entry.state != RecordIndex.PUBLISHED || entry.cloudDeletes.containsKey(target)) return null;
+                File file = published(entry.finalName);
+                if (!file.isFile() || !file.getCanonicalFile().equals(upload.file.getCanonicalFile())) return null;
+                return lease(file);
+            }
+            return null;
         }
     }
     List<Upload> uploads(String target) throws IOException {
@@ -292,7 +397,7 @@ final class RecordingFiles implements AutoCloseable {
             List<Upload> list = new ArrayList<>();
             for (RecordIndex.Entry e : index.all()) if (e.state == RecordIndex.PUBLISHED) {
                 File f = published(e.finalName);
-                if (f.isFile() && !isVerified(e, f, target)) list.add(new Upload(e, f));
+                if (f.isFile() && !e.cloudDeletes.containsKey(target) && !isVerified(e, f, target)) list.add(new Upload(e, f));
             }
             return list;
         }

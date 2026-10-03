@@ -24,7 +24,7 @@ public final class MainActivity extends Activity {
     private ListenPanel listen;
     private SettingsPanel settings;
     private TextView status, duration, details, gainLabel, levelLabel, cloud, input;
-    private Button record;
+    private Button record, addBookmark;
     private ProgressBar level;
     private int currentTab = 1;
     private Runnable afterPermission;
@@ -32,7 +32,8 @@ public final class MainActivity extends Activity {
     private boolean resumed;
     private Runnable afterNotification;
     private String exportId;
-    private static final int EXPORT = 8106, RESTORE = 8107;
+    private java.util.ArrayList<String> exportIds;
+    private static final int EXPORT = 8106, RESTORE = 8107, EXPORT_MANY=8108;
     private long refreshed;
 
     @Override protected void attachBaseContext(Context base) { super.attachBaseContext(LocaleContext.wrap(base)); }
@@ -58,6 +59,7 @@ public final class MainActivity extends Activity {
         }
         setContentView(root); Platform.insets(this, root, ui.dark);
         exportId = state == null ? null : state.getString("export_id");
+        exportIds=state==null ? null : state.getStringArrayList("export_ids");
         int selected = state != null ? state.getInt("tab", 1) : getIntent().getIntExtra("tab", config.prefs.getInt("last_tab", 1));
         tab(Math.max(0, Math.min(2, selected)));
         if(state==null && getIntent().hasExtra("settings_section"))settings.showSection(getIntent().getIntExtra("settings_section",0));
@@ -78,6 +80,11 @@ public final class MainActivity extends Activity {
                 listen.pause(); ScheduleManager.manualStart(this); refresh();
             });
         }, true);
+        addBookmark=ui.button(main,I18n.s("bookmark_add"),() -> {
+            RecordingPosition.Moment moment=RecorderService.bookmarkPosition();
+            if(moment==null)ui.toast(I18n.s("bookmark_unavailable"));
+            else Bookmarks.add(this,ui,moment.id,moment.millis);
+        },false);
         details = ui.text(main, "", 13, ui.muted);
         LinearLayout sound = ui.card(page);
         ui.title(sound, I18n.s("sound"));
@@ -98,7 +105,7 @@ public final class MainActivity extends Activity {
         ui.text(sound, I18n.s("gain_hint"), 12, ui.muted);
         input = ui.text(sound, "", 12, ui.muted);
         LinearLayout storage = ui.card(page);
-        ui.title(storage, "Nextcloud"); cloud = ui.text(storage, "", 13, ui.muted);
+        ui.title(storage, I18n.s("webdav_title")); cloud = ui.text(storage, "", 13, ui.muted);
         ui.text(page, I18n.s("record_manual_hint"), 12, ui.muted);
         return scroll;
     }
@@ -117,7 +124,7 @@ public final class MainActivity extends Activity {
     }
     @Override protected void onNewIntent(Intent intent) { super.onNewIntent(intent); setIntent(intent); if (intent.hasExtra("tab")) tab(Math.max(0,Math.min(2,intent.getIntExtra("tab", 1)))); if(intent.hasExtra("settings_section"))settings.showSection(intent.getIntExtra("settings_section",0)); }
     @Override protected void onSaveInstanceState(Bundle state) {
-        super.onSaveInstanceState(state); state.putString("export_id", exportId); state.putInt("tab", currentTab); settings.saveDraft(state);
+        super.onSaveInstanceState(state); state.putString("export_id", exportId);state.putStringArrayList("export_ids",exportIds); state.putInt("tab", currentTab); settings.saveDraft(state);
     }
     void recordingPermission(Runnable action) { permission(Platform.permissions(true), () -> notificationPermission(action)); }
     void storagePermission(Runnable action) { permission(Platform.permissions(false), action); }
@@ -155,6 +162,12 @@ public final class MainActivity extends Activity {
                 .setType("audio/mp4").putExtra(Intent.EXTRA_TITLE, item.name), EXPORT); }
         catch (RuntimeException e) { ui.toast(I18n.s("document_error")); }
     }
+    void exportRecordings(java.util.List<RecordingFiles.Item> items) {
+        exportIds=new java.util.ArrayList<>();for(RecordingFiles.Item item:items)exportIds.add(item.id);
+        try { startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION),EXPORT_MANY); }
+        catch(RuntimeException e) { exportIds=null;ui.toast(I18n.s("document_error")); }
+    }
     void restoreFolder() {
         try { startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
                 .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), RESTORE); }
@@ -163,6 +176,24 @@ public final class MainActivity extends Activity {
     @Override protected void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request, result, data);
         if (result != RESULT_OK || data == null || data.getData() == null) return;
+        if(request==EXPORT_MANY) {
+            android.net.Uri destination=data.getData();
+            java.util.ArrayList<String> requested=exportIds;exportIds=null;
+            if(requested==null || requested.isEmpty())return;
+            android.content.Context app=getApplicationContext();
+            RecordEdits.worker.execute(() -> {
+                java.util.List<RecordingFiles.Item> found=new java.util.ArrayList<>();
+                try(RecordingFiles files=new RecordingFiles(app,new Config(app))) {
+                    java.util.Set<String> ids=new java.util.HashSet<>(requested);
+                    for(RecordingFiles.Item item:files.recordings())if(ids.contains(item.id))found.add(item);
+                } catch(Exception ignored) { }
+                runOnUiThread(() -> {
+                    if(isDestroyed() || isFinishing())return;
+                    if(found.isEmpty())ui.toast(I18n.s("batch_result",0,requested.size(),0,0));
+                    else listen.runBatch(found,BatchWork.Action.EXPORT,destination,requested.size()-found.size());
+                });
+            });return;
+        }
         if (request != EXPORT && request != RESTORE) return;
         android.net.Uri uri = data.getData(); String id = exportId;
         android.content.Context app = getApplicationContext();
@@ -199,6 +230,7 @@ public final class MainActivity extends Activity {
         duration.setText(Ui.clock(active ? config.prefs.getLong("segment_ms", 0) : 0));
         record.setText(I18n.s(wanted ? "stop_save" : engine && !stale ? "saving" : "start_recording"));
         record.setEnabled(wanted || !active);
+        addBookmark.setEnabled(RecorderService.bookmarkPosition()!=null);
         long used = config.prefs.getLong("used_bytes", 0), free = config.prefs.getLong("free_bytes", 0);
         details.setText(I18n.s("storage_info", used / 1048576d, config.quotaMiB(), free / 1048576d)
                 + "\n" + I18n.s("format_info", config.minutes(), config.bitrate(), config.sampleRate())

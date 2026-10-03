@@ -7,6 +7,8 @@ import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteOpenHelper;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
 
 /** Durable ownership ledger: date-only filenames alone never authorize deletion. */
 final class RecordIndex extends SQLiteOpenHelper {
@@ -28,20 +30,110 @@ final class RecordIndex extends SQLiteOpenHelper {
         String remoteName;
         long position;
         boolean listened;
+        boolean important;
         String heardRanges;
+        final Map<String, Boolean> cloudDeletes = new HashMap<>();
     }
-    RecordIndex(Context context) { super(context, "recordings.db", null, 3); }
+    RecordIndex(Context context) { super(context, "recordings.db", null, 5); }
     @Override public void onCreate(SQLiteDatabase db) {
         db.execSQL("CREATE TABLE records (id TEXT PRIMARY KEY, start_ms INTEGER NOT NULL, "
                 + "zone TEXT NOT NULL, duration_ms INTEGER NOT NULL DEFAULT 0, "
                 + "final_name TEXT UNIQUE, state INTEGER NOT NULL)");
         addCloudColumns(db);
         addPlaybackColumns(db);
+        addCloudDeletions(db);
+        addLibraryColumns(db);
     }
     @Override public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
-        if (oldVersion < 1 || newVersion > 3) throw new IllegalStateException("Unsupported recording index upgrade");
+        if (oldVersion < 1 || newVersion > 5) throw new IllegalStateException("Unsupported recording index upgrade");
         if (oldVersion < 2) addCloudColumns(db);
         if (oldVersion < 3) addPlaybackColumns(db);
+        if (oldVersion < 4) addCloudDeletions(db);
+        if (oldVersion < 5) addLibraryColumns(db);
+    }
+    private static void addLibraryColumns(SQLiteDatabase db) {
+        db.execSQL("ALTER TABLE records ADD COLUMN important INTEGER NOT NULL DEFAULT 0");
+        db.execSQL("CREATE TABLE bookmarks (id TEXT PRIMARY KEY, record_id TEXT NOT NULL, position_ms INTEGER NOT NULL, label TEXT NOT NULL DEFAULT '')");
+        db.execSQL("CREATE INDEX bookmarks_record ON bookmarks(record_id,position_ms)");
+    }
+    boolean important(String id, boolean value) {
+        ContentValues values = new ContentValues(); values.put("important", value ? 1 : 0);
+        return getWritableDatabase().update("records", values, "id=? AND state=?", new String[]{id,String.valueOf(PUBLISHED)}) == 1;
+    }
+    boolean isImportant(String id) {
+        try (Cursor c=getReadableDatabase().query("records",new String[]{"important"},"id=?",new String[]{id},null,null,null)) {
+            return !c.moveToFirst() || c.getInt(0)!=0; // Missing cannot authorize a destructive operation.
+        }
+    }
+    boolean listened(String id, boolean value) {
+        ContentValues values=new ContentValues(); values.put("listened",value ? 1 : 0);
+        return getWritableDatabase().update("records",values,"id=? AND state=?",new String[]{id,String.valueOf(PUBLISHED)})==1;
+    }
+    static final class Bookmark {
+        final String id, recordId, label;
+        final long position;
+        Bookmark(String id,String recordId,long position,String label) {
+            this.id=id;this.recordId=recordId;this.position=position;this.label=label;
+        }
+    }
+    Bookmark addBookmark(String recordId,long position,String label) {
+        long duration=0; int state;
+        try(Cursor c=getReadableDatabase().query("records",new String[]{"duration_ms","state"},"id=?",new String[]{recordId},null,null,null)) {
+            if(!c.moveToFirst()) throw new IllegalStateException(I18n.s("bookmark_unavailable"));
+            duration=c.getLong(0);state=c.getInt(1);
+        }
+        if(state==FAILED) throw new IllegalStateException(I18n.s("bookmark_unavailable"));
+        position=Math.max(0,position);
+        if(duration>0)position=Math.min(position,duration-1);
+        String id=java.util.UUID.randomUUID().toString(); label=bookmarkLabel(label);
+        ContentValues values=new ContentValues(); values.put("id",id);values.put("record_id",recordId);
+        values.put("position_ms",position);values.put("label",label);
+        getWritableDatabase().insertOrThrow("bookmarks",null,values);
+        return new Bookmark(id,recordId,position,label);
+    }
+    List<Bookmark> bookmarks(String recordId) {
+        List<Bookmark> result=new ArrayList<>();
+        try(Cursor c=getReadableDatabase().query("bookmarks",new String[]{"id","position_ms","label"},
+                "record_id=?",new String[]{recordId},null,null,"position_ms ASC, id ASC")) {
+            while(c.moveToNext())result.add(new Bookmark(c.getString(0),recordId,c.getLong(1),c.getString(2)));
+        }
+        return result;
+    }
+    private static String bookmarkLabel(String text) {
+        String value=text==null ? "" : text.trim(); return value.length()>160 ? value.substring(0,160) : value;
+    }
+    void renameBookmark(String id,String label) {
+        ContentValues values=new ContentValues();values.put("label",bookmarkLabel(label));
+        getWritableDatabase().update("bookmarks",values,"id=?",new String[]{id});
+    }
+    void removeBookmark(String id) { getWritableDatabase().delete("bookmarks","id=?",new String[]{id}); }
+    private static void addCloudDeletions(SQLiteDatabase db) {
+        db.execSQL("CREATE TABLE cloud_deletions (record_id TEXT NOT NULL, target TEXT NOT NULL, "
+                + "done INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(record_id,target))");
+    }
+    void beginCloudDelete(String id, String target) {
+        ContentValues values = new ContentValues(); values.put("record_id", id); values.put("target", target);
+        getWritableDatabase().insertWithOnConflict("cloud_deletions", null, values, SQLiteDatabase.CONFLICT_IGNORE);
+        try (Cursor cursor = getReadableDatabase().query("cloud_deletions", new String[]{"record_id"},
+                "record_id=? AND target=?", new String[]{id,target}, null,null,null)) {
+            if (!cursor.moveToFirst()) throw new IllegalStateException("Cloud deletion intent was not saved");
+        }
+        ContentValues pending = new ContentValues(); pending.put("done", 0);
+        getWritableDatabase().update("cloud_deletions", pending, "record_id=? AND target=?", new String[]{id,target});
+    }
+    void finishCloudDelete(String id, String target) {
+        ContentValues values = new ContentValues(); values.put("done", 1);
+        if (getWritableDatabase().update("cloud_deletions", values, "record_id=? AND target=?", new String[]{id,target}) != 1)
+            throw new IllegalStateException("Cloud deletion intent is missing");
+    }
+    void resumeCloudUpload(String id, String target) {
+        SQLiteDatabase db = getWritableDatabase();
+        db.beginTransaction();
+        try {
+            db.delete("cloud_deletions", "record_id=? AND target=?", new String[]{id,target});
+            clearVerification(id);
+            db.setTransactionSuccessful();
+        } finally { db.endTransaction(); }
     }
     private static void addPlaybackColumns(SQLiteDatabase db) {
         db.execSQL("ALTER TABLE records ADD COLUMN playback_ms INTEGER NOT NULL DEFAULT 0");
@@ -100,12 +192,20 @@ final class RecordIndex extends SQLiteOpenHelper {
             return c.moveToFirst();
         }
     }
-    void remove(String id) { getWritableDatabase().delete("records", "id=?", new String[]{id}); }
+    void remove(String id) {
+        SQLiteDatabase db=getWritableDatabase();db.beginTransaction();
+        try {
+            db.delete("bookmarks","record_id=?",new String[]{id});
+            db.delete("cloud_deletions","record_id=?",new String[]{id});
+            db.delete("records","id=?",new String[]{id});
+            db.setTransactionSuccessful();
+        } finally {db.endTransaction();}
+    }
     List<Entry> all() {
         List<Entry> result = new ArrayList<>();
         try (Cursor cursor = getReadableDatabase().query("records",
                 new String[]{"id", "start_ms", "zone", "duration_ms", "final_name", "state",
-                        "verified_target", "verified_size", "verified_modified", "verified_hash", "remote_name", "playback_ms", "listened", "heard_ranges"},
+                        "verified_target", "verified_size", "verified_modified", "verified_hash", "remote_name", "playback_ms", "listened", "heard_ranges", "important"},
                 null, null, null, null, "start_ms ASC")) {
             while (cursor.moveToNext()) {
                 Entry e = new Entry();
@@ -114,8 +214,17 @@ final class RecordIndex extends SQLiteOpenHelper {
                 e.verifiedTarget = cursor.getString(6); e.verifiedSize = cursor.getLong(7);
                 e.verifiedModified = cursor.getLong(8); e.verifiedHash = cursor.getString(9);
                 e.remoteName = cursor.getString(10);
-                e.position=cursor.getLong(11);e.listened=cursor.getInt(12)!=0;e.heardRanges=cursor.getString(13);
+                e.position=cursor.getLong(11);e.listened=cursor.getInt(12)!=0;e.heardRanges=cursor.getString(13);e.important=cursor.getInt(14)!=0;
                 result.add(e);
+            }
+        }
+        Map<String, Entry> byId = new HashMap<>();
+        for (Entry entry : result) byId.put(entry.id, entry);
+        try (Cursor cursor = getReadableDatabase().query("cloud_deletions", new String[]{"record_id","target","done"},
+                null, null, null, null, null)) {
+            while (cursor.moveToNext()) {
+                Entry entry = byId.get(cursor.getString(0));
+                if (entry != null) entry.cloudDeletes.put(cursor.getString(1), cursor.getInt(2) != 0);
             }
         }
         return result;

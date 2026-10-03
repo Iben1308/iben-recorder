@@ -14,6 +14,7 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-feature android:name="android.hardware.microphone" android:required="true" />
+    <!-- Dynamic private-IP HTTP is gated per connection in DavTarget; redirects are never followed. -->
     <application
         android:name="ua.iben.recorder.RecorderApp"
         android:label="Iben Recorder"
@@ -22,7 +23,7 @@
         android:allowBackup="false"
         android:fullBackupContent="@xml/backup_rules"
         android:dataExtractionRules="@xml/data_extraction_rules"
-        android:usesCleartextTraffic="false"
+        android:usesCleartextTraffic="true"
         android:supportsRtl="true">
         <activity android:name="ua.iben.recorder.MainActivity" android:exported="true">
             <intent-filter>

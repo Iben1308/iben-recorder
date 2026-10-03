@@ -72,7 +72,7 @@ public final class SyncJobService extends JobService {
                 if(revision!=parameters.getExtras().getLong("revision"))return;
                 try(RecordingFiles files=new RecordingFiles(SyncJobService.this,new Config(SyncJobService.this))) {
                     int pending=files.uploads(cloud.targetKey()).size();pendingFiles=pending>0;cloud.prefs.edit().putInt("pending",pending).apply();
-                    if(!pendingFiles){cloud.prefs.edit().putInt("failures",0).putLong("retry_at",0).apply();cloud.status("Усі готові записи передано й перевірено");ProblemNotifications.cloudHealthy(SyncJobService.this);return;}
+                    if(!pendingFiles){cloud.prefs.edit().putInt("failures",0).putLong("retry_at",0).apply();cloud.status(I18n.uk("cloud_queue_empty"));ProblemNotifications.cloudHealthy(SyncJobService.this);return;}
                 }
                 CloudSettings.Connection connection = cloud.connection();
                 revision = connection.revision;
@@ -80,7 +80,7 @@ public final class SyncJobService extends JobService {
                 if (revision != parameters.getExtras().getLong("revision")) return;
                 if (!Platform.storageGranted(SyncJobService.this))
                     throw new IOException("Надайте дозвіл на сховище, запустивши запис у застосунку");
-                client = new DavClient(connection.target, connection.password, (phase, done, total) -> {
+                client = connection.client( (phase, done, total) -> {
                     long now = SystemClock.elapsedRealtime();
                     if (current() && now - lastProgress > 1000L) {
                         lastProgress = now;
@@ -95,27 +95,30 @@ public final class SyncJobService extends JobService {
                         if (queue.isEmpty()) {
                             ProblemNotifications.cloudHealthy(SyncJobService.this);
                             cloud.prefs.edit().putInt("failures", 0).putLong("retry_at", 0).apply();
-                            cloud.status("Усі готові записи передано й перевірено");
+                            cloud.status(I18n.uk("cloud_queue_empty"));
                             break;
                         }
                         RecordingFiles.Upload file = queue.get(0);
-                        String remoteName = file.remoteName;
-                        cloud.status("Передача: " + file.name);
-                        DavClient.Receipt receipt;
-                        try { receipt = client.upload(file.file, remoteName); }
-                        catch (DavClient.Conflict collision) {
-                            String alternate = file.collisionName();
-                            if (remoteName.equals(alternate)) throw collision;
-                            files.uploadName(file, alternate); // Persist BEFORE network I/O for crash-safe retry.
-                            remoteName = alternate;
-                            receipt = client.upload(file.file, remoteName);
+                        try (RecordingFiles.Lease lease = files.leaseUpload(file, connection.target.key)) {
+                            if (lease == null) continue; // Deleted before this upload started; re-read the queue.
+                            String remoteName = file.remoteName;
+                            cloud.status("Передача: " + file.name);
+                            DavClient.Receipt receipt;
+                            try { receipt = client.upload(file.file, remoteName); }
+                            catch (DavClient.Conflict collision) {
+                                String alternate = file.collisionName();
+                                if (remoteName.equals(alternate)) throw collision;
+                                files.uploadName(file, alternate); // Persist BEFORE network I/O for crash-safe retry.
+                                remoteName = alternate;
+                                receipt = client.upload(file.file, remoteName);
+                            }
+                            if (!current()) return;
+                            files.uploaded(file, connection.target.key, remoteName, receipt);
+                            ProblemNotifications.cloudHealthy(SyncJobService.this);
+                            cloud.prefs.edit().putString("last_file", file.name).putLong("last_success", System.currentTimeMillis())
+                                    .putInt("failures", 0).putLong("retry_at", 0).putInt("pending", queue.size() - 1).apply();
+                            AppLog.write(SyncJobService.this, "WebDAV: передано й перевірено SHA-256: " + file.name);
                         }
-                        if (!current()) return;
-                        files.uploaded(file, connection.target.key, remoteName, receipt);
-                        ProblemNotifications.cloudHealthy(SyncJobService.this);
-                        cloud.prefs.edit().putString("last_file", file.name).putLong("last_success", System.currentTimeMillis())
-                                .putInt("failures", 0).putLong("retry_at", 0).putInt("pending", queue.size() - 1).apply();
-                        AppLog.write(SyncJobService.this, "WebDAV: передано й перевірено SHA-256: " + file.name);
                         // Let the OS reschedule before its execution window is exhausted.
                         if (SystemClock.elapsedRealtime() - started > 4 * 60000L) { next = 1000L; break; }
                     }

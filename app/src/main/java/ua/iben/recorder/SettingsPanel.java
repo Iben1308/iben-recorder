@@ -42,7 +42,7 @@ final class SettingsPanel {
         LinearLayout navigation = ui.row(); navigation.setPadding(ui.dp(8), 0, ui.dp(8), 0); view.addView(navigation);
         FrameLayout content = new FrameLayout(activity); view.addView(content, new LinearLayout.LayoutParams(-1, 0, 1));
         LinearLayout[] pages = new LinearLayout[4];
-        String[] labels = {I18n.s("general"), I18n.s("sound"), I18n.s("schedule_tab"), "Nextcloud"};
+        String[] labels = {I18n.s("general"), I18n.s("sound"), I18n.s("schedule_tab"), I18n.s("webdav_title")};
         for (int i = 0; i < sections.length; i++) {
             final int index = i;
             sectionButtons[i] = ui.button(null, labels[i], () -> showSection(index), false);
@@ -139,7 +139,7 @@ final class SettingsPanel {
         });
         ui.text(playback, I18n.s("silence_hint"), 12, ui.muted);
 
-        LinearLayout storage = ui.card(pages[3]); ui.title(storage, "Nextcloud · WebDAV");
+        LinearLayout storage = ui.card(pages[3]); ui.title(storage, "WebDAV · WebDAV");
         cloudStatus = ui.text(storage, "", 13, ui.muted);
         ui.button(storage, I18n.s("cloud_connection"), () -> activity.startActivity(new Intent(activity, CloudActivity.class)), true);
         ui.text(storage, RecordingFiles.outputDirectory(activity).getAbsolutePath(), 12, ui.muted).setTextIsSelectable(true);
@@ -173,7 +173,7 @@ final class SettingsPanel {
             ScrollView scroll = new ScrollView(activity); scroll.addView(text);
             new AlertDialog.Builder(activity).setTitle(I18n.s("log")).setView(scroll).setPositiveButton(I18n.s("close"), null).show();
         }, false);
-        ui.text(system, "Iben Recorder · 0.6 · Android 8.1+", 12, ui.muted);
+        ui.text(system, "Iben Recorder · 0.7.0 · Android 8.1+", 12, ui.muted);
         showSection(draft == null ? config.prefs.getInt("settings_section", 0) : draft.getInt("draft_section", 0)); refresh();
     }
     private interface Selected { void value(int position); }

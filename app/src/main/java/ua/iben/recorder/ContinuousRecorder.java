@@ -49,6 +49,7 @@ final class ContinuousRecorder {
     private volatile long lastCapture = SystemClock.elapsedRealtime();
     private volatile long lastWrite = SystemClock.elapsedRealtime();
     private volatile boolean recording;
+    private final RecordingPosition bookmarkPosition = new RecordingPosition();
     private long sessionWall;
     private String sessionZone;
 
@@ -66,6 +67,7 @@ final class ContinuousRecorder {
     }
     void abort(String reason) { fail(new IOException(reason)); }
     boolean recording() { return recording; }
+    RecordingPosition.Moment bookmarkPosition() { return recording && !stopRequested ? bookmarkPosition.snapshot() : null; }
     long segmentStart() { return segmentStart; }
     long segmentMillis() { return segmentUs / 1000L; }
     int finishing() { return finishing.get(); }
@@ -285,6 +287,7 @@ final class ContinuousRecorder {
                 current.muxer.writeSampleData(current.track, ByteBuffer.wrap(packet.data), info);
                 current.last = packet.pts; current.wrote = true;
                 segmentUs = packet.pts - current.first;
+                bookmarkPosition.update(current.part.id, segmentUs / 1000L);
                 lastWrite = SystemClock.elapsedRealtime();
                 if (lastWrite - storageAt >= 30000L) {
                     storageAt = lastWrite;
@@ -298,6 +301,7 @@ final class ContinuousRecorder {
                 // Keep AAC frame timing; the metadata duration reflects the actual coded frames.
                 finishAsync(finalizers, current, end);
             }
+            bookmarkPosition.clear();
             writerEnded = true;
             finalizers.shutdown();
             boolean interrupted = false;

@@ -33,6 +33,27 @@ final class DocumentTransfers {
             }
         }
     }
+    static void exportToFolder(Context context,RecordingFiles.Item item,Uri tree) throws IOException {
+        String parentId=DocumentsContract.getTreeDocumentId(tree);
+        Uri parent=DocumentsContract.buildDocumentUriUsingTree(tree,parentId);
+        Uri children=DocumentsContract.buildChildDocumentsUriUsingTree(tree,parentId);
+        java.util.Set<String> names=new java.util.HashSet<>();
+        try(Cursor cursor=context.getContentResolver().query(children,new String[]{DocumentsContract.Document.COLUMN_DISPLAY_NAME},null,null,null)) {
+            if(cursor==null)throw new IOException(I18n.s("document_error"));
+            while(cursor.moveToNext())names.add(cursor.getString(0));
+        }
+        String name=item.name;
+        if(names.contains(name))name=name.substring(0,name.length()-4)+"_"+java.util.UUID.randomUUID()+".m4a";
+        if(Thread.currentThread().isInterrupted())throw new IOException(I18n.s("batch_interrupted"));
+        Uri created=DocumentsContract.createDocument(context.getContentResolver(),parent,"audio/mp4",name);
+        if(created==null)throw new IOException(I18n.s("document_error"));
+        boolean copied=false;
+        try { export(context,item.id,created);copied=true; }
+        finally {
+            if(!copied)try { DocumentsContract.deleteDocument(context.getContentResolver(),created); }
+            catch(Exception ignored) { }
+        }
+    }
     static int restore(Context context, Uri tree) throws IOException {
         // This only reconnects entries in this installation's existing ownership ledger.
         // It cannot import another application's recordings or make them eligible for cleanup.

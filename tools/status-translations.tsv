@@ -7,7 +7,7 @@
 ; повтор через 	; retry in 	; ponowna próba za 
 Android не прийняв завдання передачі; відкрийте застосунок повторно	Android did not accept the upload job; reopen the app	Android nie przyjął zadania przesyłania; otwórz aplikację ponownie
 WebDAV: передано й перевірено SHA-256: 	WebDAV: uploaded and SHA-256 verified: 	WebDAV: przesłano i zweryfikowano SHA-256: 
-Ім’я користувача Nextcloud	Nextcloud username	Nazwa użytkownika Nextcloud
+Ім’я користувача WebDAV	WebDAV username	Nazwa użytkownika WebDAV
 Автоматично передавати готові записи	Automatically upload completed recordings	Automatycznie przesyłaj gotowe nagrania
 Аудіозапис	Audio recording	Nagrywanie dźwięku
 Введіть пароль застосунку для нової адреси або користувача	Enter the app password for the new address or user	Wprowadź hasło aplikacji dla nowego adresu lub użytkownika
@@ -27,7 +27,7 @@ WebDAV: передано й перевірено SHA-256: 	WebDAV: uploaded and 
 Журнал поки порожній.	The log is empty.	Dziennik jest pusty.
 Завантаження	Uploading	Przesyłanie
 Завершення й збереження запису…	Finishing and saving the recording…	Kończenie i zapisywanie nagrania…
-Заздалегідь створи папку IbenRecorder81 у вебінтерфейсі Nextcloud. Скопіюй свою WebDAV-адресу з налаштувань файлів і додай до неї назву папки. Публічне посилання «Поділитися» не підходить.	Create the IbenRecorder81 folder in Nextcloud first. Copy your WebDAV URL from Files settings and append the folder name. A public sharing link cannot be used here.	Najpierw utwórz folder IbenRecorder81 w Nextcloud. Skopiuj adres WebDAV z ustawień plików i dopisz nazwę folderu. Publiczny link udostępniania nie pasuje do tego pola.
+Заздалегідь створи папку IbenRecorder81 у вебінтерфейсі WebDAV. Скопіюй свою WebDAV-адресу з налаштувань файлів і додай до неї назву папки. Публічне посилання «Поділитися» не підходить.	Create the IbenRecorder81 folder in WebDAV first. Copy your WebDAV URL from Files settings and append the folder name. A public sharing link cannot be used here.	Najpierw utwórz folder IbenRecorder81 w WebDAV. Skopiuj adres WebDAV z ustawień plików i dopisz nazwę folderu. Publiczny link udostępniania nie pasuje do tego pola.
 Запис вимкнено	Recording is off	Nagrywanie wyłączone
 Запис зупинено	Recording stopped	Nagrywanie zatrzymane
 Запис зупинено з помилкою: 	Recording stopped with an error: 	Nagrywanie zatrzymano z błędem: 
@@ -86,7 +86,7 @@ WebDAV: передано й перевірено SHA-256: 	WebDAV: uploaded and 
 Некоректний ідентифікатор запису	Invalid recording identifier	Nieprawidłowy identyfikator nagrania
 Немає декодованого звуку	No decoded audio	Brak zdekodowanego dźwięku
 Немає доступу до папки записів	Cannot access the recording folder	Brak dostępu do folderu nagrań
-Немає доступу до папки; перевірте дозволи Nextcloud	Cannot access the folder; check Nextcloud permissions	Brak dostępu do folderu; sprawdź uprawnienia Nextcloud
+Немає доступу до папки; перевірте дозволи WebDAV	Cannot access the folder; check WebDAV permissions	Brak dostępu do folderu; sprawdź uprawnienia WebDAV
 Немає доступу до старої робочої папки	Cannot access the old working folder	Brak dostępu do starego folderu roboczego
 Немає нового аудіо понад 30 секунд	No new audio for more than 30 seconds	Brak nowego dźwięku przez ponad 30 sekund
 Немає формату AAC	No AAC format	Brak formatu AAC
@@ -96,9 +96,9 @@ WebDAV: передано й перевірено SHA-256: 	WebDAV: uploaded and 
 Обраний режим мікрофона не підтримується	The selected microphone mode is not supported	Wybrany tryb mikrofonu nie jest obsługiwany
 Очікування дозволеної мережі та запуску Android	Waiting for an allowed network and Android scheduling	Oczekiwanie na dozwoloną sieć i uruchomienie przez Androida
 Очікування передачі	Waiting to upload	Oczekiwanie na przesłanie
-Папку не знайдено. Створіть її в Nextcloud і перевірте WebDAV-адресу	Folder not found. Create it in Nextcloud and check the WebDAV URL	Nie znaleziono folderu. Utwórz go w Nextcloud i sprawdź adres WebDAV
+Папку не знайдено. Створіть її в WebDAV і перевірте WebDAV-адресу	Folder not found. Create it in WebDAV and check the WebDAV URL	Nie znaleziono folderu. Utwórz go w WebDAV i sprawdź adres WebDAV
 Папку призначення змінено; попереднє підтвердження не застосовано	The destination changed; the previous verification was not applied	Zmieniono folder docelowy; poprzednie potwierdzenie nie zostało zastosowane
-Пароль застосунку Nextcloud	Nextcloud app password	Hasło aplikacji Nextcloud
+Пароль застосунку WebDAV	WebDAV app password	Hasło aplikacji WebDAV
 Перевірити підключення	Test connection	Sprawdź połączenie
 Перевірка SHA-256	Verifying SHA-256	Weryfikacja SHA-256
 Перевірка створює, читає й видаляє маленький тестовий файл у вибраній папці.	The test creates, reads and deletes a small test file in the selected folder.	Test tworzy, odczytuje i usuwa mały plik testowy w wybranym folderze.
@@ -118,11 +118,11 @@ WebDAV: передано й перевірено SHA-256: 	WebDAV: uploaded and 
 Помилка передачі	Upload error	Błąd przesyłania
 Помилка читання мікрофона: 	Microphone read error: 	Błąd odczytu mikrofonu: 
 Потрібен Android 8.1	Android 8.1 is required	Wymagany Android 8.1
-Потрібен пароль застосунку Nextcloud	A Nextcloud app password is required	Wymagane hasło aplikacji Nextcloud
+Потрібен пароль застосунку WebDAV	A WebDAV app password is required	Wymagane hasło aplikacji WebDAV
 Потрібні дозволи на мікрофон і файли	Microphone and storage permissions are required	Wymagane uprawnienia do mikrofonu i pamięci
 Призупинити передачу	Pause uploads	Wstrzymaj przesyłanie
 Прошивка не використовує обраний аудіовхід; запис призупинено	The firmware is not using the selected audio input; recording paused	System nie używa wybranego wejścia audio; nagrywanie wstrzymane
-Пряме завантаження готових записів. Застосунок Nextcloud на телефоні не потрібний.	Upload completed recordings directly. The Nextcloud app is not needed on the phone.	Przesyłaj gotowe nagrania bezpośrednio. Aplikacja Nextcloud na telefonie nie jest potrzebna.
+Пряме завантаження готових записів. Застосунок WebDAV на телефоні не потрібний.	Upload completed recordings directly. The WebDAV app is not needed on the phone.	Przesyłaj gotowe nagrania bezpośrednio. Aplikacja WebDAV na telefonie nie jest potrzebna.
 Підготовка	Preparing	Przygotowanie
 Підготовка або завершення аудіодвигуна…	Starting or finishing audio capture…	Uruchamianie lub kończenie nagrywania…
 Підготовка запису…	Preparing to record…	Przygotowanie nagrywania…
@@ -136,10 +136,10 @@ WebDAV: передано й перевірено SHA-256: 	WebDAV: uploaded and 
 Сервер не відповів вчасно; передачу буде повторено	The server timed out; upload will be retried	Serwer nie odpowiedział na czas; przesyłanie zostanie ponowione
 Сервер не підтвердив операцію	The server did not confirm the operation	Serwer nie potwierdził operacji
 Сервер обмежив частоту запитів	The server rate-limited requests	Serwer ograniczył częstotliwość żądań
-Сервер перенаправляє запит. Вкажіть кінцеву HTTPS WebDAV-адресу	The server redirects the request. Enter the final HTTPS WebDAV URL	Serwer przekierowuje żądanie. Podaj końcowy adres HTTPS WebDAV
+Сервер перенаправляє запит. Вкажіть кінцеву WebDAV-адресу	The server redirects the request. Enter the final WebDAV URL	Serwer przekierowuje żądanie. Podaj końcowy adres WebDAV
 Синхронізувати зараз	Sync now	Synchronizuj teraz
 Стан безперервного запису та кнопка зупинки	Continuous recording status and stop button	Stan ciągłego nagrywania i przycisk zatrzymania
-Створи в Nextcloud → Особисті налаштування → Безпека	Create in Nextcloud → Personal settings → Security	Utwórz w Nextcloud → Ustawienia osobiste → Bezpieczeństwo
+Створи в WebDAV → Особисті налаштування → Безпека	Create in WebDAV → Personal settings → Security	Utwórz w WebDAV → Ustawienia osobiste → Bezpieczeństwo
 Сторонній робочий шлях	Unexpected working path	Nieoczekiwana ścieżka robocza
 Сторонній шлях запису	Unexpected recording path	Nieoczekiwana ścieżka nagrania
 Сховище не встигає приймати аудіо	Storage cannot keep up with audio capture	Pamięć nie nadąża z zapisywaniem dźwięku
@@ -151,3 +151,5 @@ WebDAV: передано й перевірено SHA-256: 	WebDAV: uploaded and 
 Файл заблокований сервером; спробу буде повторено	The server locked the file; the operation will be retried	Serwer zablokował plik; próba zostanie ponowiona
 Фрагмент не має читабельного аудіо; залишено у .temp	The segment has no readable audio; left in .temp	Fragment nie ma odczytywalnego dźwięku; pozostawiono go w .temp
 Черга завершення файлів переповнена	The file finalization queue is full	Kolejka finalizacji plików jest pełna
+Черга передачі порожня	Upload queue is empty	Kolejka wysyłania jest pusta
+Файл заблокований сервером	The file is locked by the server	Plik jest zablokowany przez serwer

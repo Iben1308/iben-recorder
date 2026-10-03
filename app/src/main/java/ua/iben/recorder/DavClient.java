@@ -13,14 +13,14 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.Base64;
 import java.util.UUID;
+import java.util.function.BooleanSupplier;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
-/** Plain HTTPS WebDAV subset (GET, conditional PUT, DELETE of our own test file).
- * Production connections retain the system certificate/hostname verification.
- * A directory must already exist. Never overwrite or delete remote recordings.
+/** HTTPS WebDAV with conditional uploads and explicitly requested, content-verified deletion.
+ * Production connections retain system certificate/hostname checks and reject redirects.
  */
 public final class DavClient implements AutoCloseable {
     public interface Progress { void update(String phase, long done, long total); }
@@ -49,10 +49,25 @@ public final class DavClient implements AutoCloseable {
     private ScheduledFuture<?> deadline;
 
     public DavClient(DavTarget target, String password, Progress progress) {
-        this(target, password, progress, url -> (HttpURLConnection) url.openConnection());
+        this(target,password,progress,"");
+    }
+    public DavClient(DavTarget target,String password,Progress progress,String certificate) {
+        this(target,password,progress,new Connections() {
+            private javax.net.ssl.SSLSocketFactory trusted;
+            @Override public HttpURLConnection open(URL url) throws IOException {
+                HttpURLConnection connection=(HttpURLConnection)(url.getProtocol().equals("http")
+                        ? url.openConnection(java.net.Proxy.NO_PROXY) : url.openConnection());
+                if(!certificate.isEmpty()) {
+                    if(!(connection instanceof javax.net.ssl.HttpsURLConnection))throw new IOException(I18n.s("certificate_https_only"));
+                    if(trusted==null)trusted=TlsCertificate.socketFactory(certificate);
+                    ((javax.net.ssl.HttpsURLConnection)connection).setSSLSocketFactory(trusted);
+                }
+                return connection;
+            }
+        });
     }
     DavClient(DavTarget target, String password, Progress progress, Connections connections) {
-        if (password == null || password.isEmpty()) throw new IllegalArgumentException("Потрібен пароль застосунку Nextcloud");
+        if (password == null || password.isEmpty()) throw new IllegalArgumentException("Потрібен пароль застосунку WebDAV");
         this.target = target; this.progress = progress; this.connections = connections;
         authorization = "Basic " + Base64.getEncoder().encodeToString((target.username + ":" + password).getBytes(StandardCharsets.UTF_8));
     }
@@ -76,7 +91,7 @@ public final class DavClient implements AutoCloseable {
         c.setRequestProperty("X-Requested-With", "XMLHttpRequest");
         c.setRequestProperty("Accept-Encoding", "identity");
         c.setRequestProperty("Cache-Control", "no-cache, no-store");
-        c.setRequestProperty("User-Agent", "IbenRecorder/0.4-oreo.1");
+        c.setRequestProperty("User-Agent", "IbenRecorder/0.7.0");
         // HttpsURLConnection lacks a write timeout. Bound the whole request as well.
         deadline = DEADLINES.schedule(c::disconnect, 9, TimeUnit.MINUTES);
         check();
@@ -92,14 +107,14 @@ public final class DavClient implements AutoCloseable {
         String why;
         switch (code) {
             case 401: why = "Неправильний логін або пароль застосунку"; break;
-            case 403: why = "Немає доступу до папки; перевірте дозволи Nextcloud"; break;
-            case 404: case 409: why = "Папку не знайдено. Створіть її в Nextcloud і перевірте WebDAV-адресу"; break;
+            case 403: why = "Немає доступу до папки; перевірте дозволи WebDAV"; break;
+            case 404: case 409: why = "Папку не знайдено. Створіть її в WebDAV і перевірте WebDAV-адресу"; break;
             case 413: why = "Сервер відхилив розмір файла; зменште інтервал запису або збільште ліміт запиту на сервері"; break;
-            case 423: why = "Файл заблокований сервером; спробу буде повторено"; break;
+            case 423: why = "Файл заблокований сервером"; break;
             case 429: why = "Сервер обмежив частоту запитів"; break;
             case 507: why = "На сервері закінчилося місце або квота"; break;
             default: why = code >= 300 && code < 400
-                    ? "Сервер перенаправляє запит. Вкажіть кінцеву HTTPS WebDAV-адресу"
+                    ? "Сервер перенаправляє запит. Вкажіть кінцеву WebDAV-адресу"
                     : "Сервер не підтвердив операцію";
         }
         return new IOException(why + " (HTTP " + code + ")");
@@ -183,11 +198,41 @@ public final class DavClient implements AutoCloseable {
         check(); unchanged(file, size, modified);
         return receipt;
     }
+    /** Only a recorded receipt authorizes this exact file. Never accepts directories or wildcards. */
+    public void deleteRecording(String remoteName, long expectedSize, String expectedHash) throws IOException {
+        deleteRecording(remoteName, expectedSize, expectedHash, () -> true);
+    }
+    void deleteRecording(String remoteName, long expectedSize, String expectedHash, BooleanSupplier allowed) throws IOException {
+        if (remoteName == null || !remoteName.endsWith(".m4a") || expectedSize <= 0
+                || expectedHash == null || !expectedHash.matches("[0-9a-f]{64}"))
+            throw new IOException(I18n.s("cloud_delete_no_receipt"));
+        if (!allowed.getAsBoolean()) throw new InterruptedIOException();
+        Receipt remote = verify(remoteName, expectedSize, 0, expectedHash);
+        check();
+        if (!allowed.getAsBoolean()) throw new InterruptedIOException();
+        if (remote == null) return; // A previous DELETE may have succeeded before its response was lost.
+        if (!strongEtag(remote.etag)) throw new IOException(I18n.s("cloud_delete_etag"));
+        HttpURLConnection c = null;
+        try {
+            c = begin("DELETE", remoteName);
+            c.setRequestProperty("If-Match", remote.etag);
+            int code = c.getResponseCode();
+            if (code == 412) throw new Conflict();
+            if (code != 200 && code != 204 && code != 404) throw response(code);
+        } finally { end(c); }
+    }
+    private static boolean strongEtag(String etag) {
+        if (etag == null || etag.length() < 2 || etag.charAt(0) != '"' || etag.charAt(etag.length()-1) != '"') return false;
+        for (int i=1;i<etag.length()-1;i++) {
+            char c=etag.charAt(i); if (c=='"' || c<0x21 || c==0x7f) return false;
+        }
+        return true;
+    }
     private static void unchanged(File file, long size, long modified) throws IOException {
         if (!file.isFile() || file.length() != size || file.lastModified() != modified)
             throw new IOException("Локальний файл змінився; підтвердження не збережено");
     }
-    /** A tiny uniquely named probe; remote recordings are never deleted. */
+    /** Connection test removes only its own tiny, uniquely named probe. */
     public void test(File cacheDirectory) throws IOException {
         File probe = File.createTempFile("iben-webdav-", ".txt", cacheDirectory);
         String remote = ".iben-connection-test-" + UUID.randomUUID() + ".txt";

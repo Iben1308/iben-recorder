@@ -19,9 +19,12 @@ public final class CloudActivity extends Activity {
     private CloudSettings cloud;
     private LinearLayout root;
     private EditText address, user, password;
-    private Switch enabled, unmetered;
-    private Button save, test, now, pause;
-    private TextView status, testStatus;
+    private Switch enabled, unmetered, localHttp;
+    private Button save, test, now, pause, certificateImport, certificateClear;
+    private TextView status, testStatus, certificateStatus;
+    private String trustedCertificate="";
+    private boolean settingFields,httpConfirmed;
+    private static final int IMPORT_CERTIFICATE=8201;
     private int foreground;
     private final Handler timer = new Handler(Looper.getMainLooper());
     private volatile DavClient testClient;
@@ -40,19 +43,44 @@ public final class CloudActivity extends Activity {
         ScrollView scroll = new ScrollView(this);
         root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(dp(22), dp(22), dp(22), dp(30)); scroll.addView(root); setContentView(scroll); Platform.insets(this, scroll, dark);
-        text("Nextcloud · WebDAV", 26);
-        text("Пряме завантаження готових записів. Застосунок Nextcloud на телефоні не потрібний.", 14);
+        text(I18n.s("webdav_title"), 26);
+        text(I18n.s("webdav_intro"), 14);
         status = text("", 15);
-        address = input("Повна HTTPS WebDAV-адреса папки", cloud.folder(), InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
-        address.setHint("https://cloud.example.com/remote.php/dav/files/LOGIN/IbenRecorder81/");
-        user = input("Ім’я користувача Nextcloud", cloud.username(), InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
-        password = input("Пароль застосунку Nextcloud", "", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        address = input(I18n.s("webdav_address"), state==null ? cloud.folder() : state.getString("draft_folder",cloud.folder()), InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
+        address.setHint("https://server.example.com/recordings/");
+        user = input(I18n.s("webdav_user"), state==null ? cloud.username() : state.getString("draft_user",cloud.username()), InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        password = input(I18n.s("webdav_password"), "", InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
         password.setSaveEnabled(false);
         password.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO);
-        password.setHint(I18n.tr(cloud.hasSecret() ? "Збережено — порожнє поле залишає пароль" : "Створи в Nextcloud → Особисті налаштування → Безпека"));
-        text("Заздалегідь створи папку IbenRecorder81 у вебінтерфейсі Nextcloud. Скопіюй свою WebDAV-адресу з налаштувань файлів і додай до неї назву папки. Публічне посилання «Поділитися» не підходить.", 13);
-        enabled = toggle("Автоматично передавати готові записи", cloud.enabled());
-        unmetered = toggle("Лише мережа без тарифікації (зазвичай Wi-Fi)", cloud.unmetered());
+        password.setHint(cloud.hasSecret() ? I18n.tr("Збережено — порожнє поле залишає пароль") : I18n.s("webdav_password_hint"));
+        text(I18n.s("webdav_folder_hint"),13);
+        text(I18n.s("webdav_nextcloud_recommend"),13);
+        localHttp=toggle(I18n.s("http_allow"),state==null ? cloud.localHttp() : state.getBoolean("draft_http",false));
+        text(I18n.s("http_warning"),13);
+        httpConfirmed=localHttp.isChecked();
+        localHttp.setOnCheckedChangeListener((button,checked) -> {
+            if(!checked)httpConfirmed=false;
+            if(checked && !settingFields) { httpConfirmed=false;new android.app.AlertDialog.Builder(this).setTitle(I18n.s("http_allow"))
+                    .setMessage(I18n.s("http_warning"))
+                    .setNegativeButton(I18n.s("cancel"),(d,w) -> localHttp.setChecked(false))
+                    .setOnCancelListener(d -> localHttp.setChecked(false))
+                    .setPositiveButton(I18n.s("http_confirm"),(d,w) -> httpConfirmed=true).show(); }
+        });
+        trustedCertificate=state==null ? cloud.certificate() : state.getString("draft_certificate","");
+        certificateStatus=text("",12);certificateStatus.setTextIsSelectable(true);
+        certificateImport=button(I18n.s("certificate_import"),this::importCertificate);
+        certificateClear=button(I18n.s("certificate_clear"),() -> {trustedCertificate="";certificateSummary();});
+        certificateSummary();
+        android.text.TextWatcher changed=new android.text.TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s,int start,int count,int after) { }
+            @Override public void onTextChanged(CharSequence s,int start,int before,int count) {
+                if(!settingFields) {localHttp.setChecked(false);trustedCertificate="";certificateSummary();}
+            }
+            @Override public void afterTextChanged(android.text.Editable s) { }
+        };
+        address.addTextChangedListener(changed);user.addTextChangedListener(changed);
+        enabled = toggle("Автоматично передавати готові записи", state==null ? cloud.enabled() : state.getBoolean("draft_enabled",cloud.enabled()));
+        unmetered = toggle("Лише мережа без тарифікації (зазвичай Wi-Fi)", state==null ? cloud.unmetered() : state.getBoolean("draft_wifi",cloud.unmetered()));
         text("Після передачі файл читається назад і звіряється SHA-256. Це додає вхідний трафік приблизно в розмір запису. Непередані файли захищені від очищення навіть після вимкнення передачі.", 13);
         save = button("Зберегти підключення", this::save);
         test = button("Перевірити підключення", this::test);
@@ -73,12 +101,13 @@ public final class CloudActivity extends Activity {
         if (working) return;
         String folder = address.getText().toString(); String login = user.getText().toString();
         String secret = password.getText().toString(); boolean active = enabled.isChecked(); boolean wifi = unmetered.isChecked();
+        boolean http=localHttp.isChecked() && httpConfirmed;String certificate=trustedCertificate;
         busy(true); testStatus.setText(I18n.tr("Збереження…"));
         new Thread(() -> {
             String result;
             boolean success = false;
             try {
-                cloud.save(folder, login, secret, active, wifi);
+                cloud.save(folder, login, secret, active, wifi,http,certificate);
                 SyncScheduler.restart(getApplicationContext());
                 result = "Підключення збережено"; success = true;
             } catch (Exception e) { result = CloudSettings.error(e); }
@@ -87,7 +116,10 @@ public final class CloudActivity extends Activity {
                 if (gone) return;
                 busy(false); testStatus.setText(I18n.tr(message));
                 if (saved) {
+                    settingFields=true;
                     address.setText(cloud.folder()); user.setText(cloud.username()); password.setText("");
+                    localHttp.setChecked(cloud.localHttp());httpConfirmed=cloud.localHttp();trustedCertificate=cloud.certificate();certificateSummary();
+                    settingFields=false;
                     password.setHint(I18n.tr("Збережено — порожнє поле залишає пароль"));
                 }
                 refresh();
@@ -98,18 +130,19 @@ public final class CloudActivity extends Activity {
         if (working) return;
         String folder = address.getText().toString(); String login = user.getText().toString();
         String typedPassword = password.getText().toString();
+        boolean http=localHttp.isChecked() && httpConfirmed;String certificate=trustedCertificate;
         busy(true); testStatus.setText(I18n.tr("Перевірка читання й запису…"));
         new Thread(() -> {
             String result;
             try {
-                DavTarget target = new DavTarget(folder, login);
+                DavTarget target = new DavTarget(folder, login,http);
                 String secret = typedPassword;
                 if (secret.isEmpty()) {
                     CloudSettings.Connection stored = cloud.connection();
                     if (!stored.target.key.equals(target.key)) throw new IllegalArgumentException("Введіть пароль застосунку для нової адреси або користувача");
                     secret = stored.password;
                 }
-                DavClient client = new DavClient(target, secret, (phase, done, total) -> { });
+                DavClient client = new DavClient(target, secret, (phase, done, total) -> { },certificate);
                 testClient = client;
                 try {
                     if (gone) return;
@@ -121,9 +154,51 @@ public final class CloudActivity extends Activity {
             runOnUiThread(() -> { if (!gone) { busy(false); testStatus.setText(I18n.tr(message)); } });
         }, "iben-webdav-test").start();
     }
+    private void certificateSummary() {
+        try { certificateStatus.setText(trustedCertificate.isEmpty() ? I18n.s("certificate_system")
+                : I18n.s("certificate_details",TlsCertificate.decode(trustedCertificate).getSubjectX500Principal().getName(),
+                    TlsCertificate.fingerprint(trustedCertificate),java.text.DateFormat.getDateInstance().format(TlsCertificate.decode(trustedCertificate).getNotAfter()))); }
+        catch(Exception e) { trustedCertificate="";certificateStatus.setText(I18n.s("certificate_invalid")); }
+    }
+    private void importCertificate() {
+        if(working)return;
+        if(!address.getText().toString().trim().startsWith("https://")) {testStatus.setText(I18n.s("certificate_https_only"));return;}
+        try {startActivityForResult(new android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT)
+                .addCategory(android.content.Intent.CATEGORY_OPENABLE).setType("*/*"),IMPORT_CERTIFICATE);}
+        catch(RuntimeException e) {testStatus.setText(I18n.s("document_error"));}
+    }
+    @Override protected void onSaveInstanceState(Bundle state) {
+        super.onSaveInstanceState(state);
+        state.putString("draft_folder",address.getText().toString());state.putString("draft_user",user.getText().toString());
+        state.putBoolean("draft_http",localHttp.isChecked() && httpConfirmed);state.putString("draft_certificate",trustedCertificate);
+        state.putBoolean("draft_enabled",enabled.isChecked());state.putBoolean("draft_wifi",unmetered.isChecked());
+    }
+    @Override protected void onActivityResult(int request,int result,android.content.Intent data) {
+        super.onActivityResult(request,result,data);
+        if(request!=IMPORT_CERTIFICATE || result!=RESULT_OK || data==null || data.getData()==null)return;
+        android.net.Uri source=data.getData();busy(true);
+        new Thread(() -> {
+            String certificate=null,error=null;
+            try(java.io.InputStream input=getContentResolver().openInputStream(source);
+                    java.io.ByteArrayOutputStream output=new java.io.ByteArrayOutputStream()) {
+                BoundedCopy.copy(input,output,65536);certificate=TlsCertificate.importPublic(output.toByteArray());
+            } catch(Exception e) {error=I18n.s("certificate_invalid");}
+            String imported=certificate,problem=error;
+            runOnUiThread(() -> {
+                if(gone)return;busy(false);
+                if(problem!=null) {testStatus.setText(problem);return;}
+                try {
+                    new android.app.AlertDialog.Builder(this).setTitle(I18n.s("certificate_import"))
+                            .setMessage(I18n.s("certificate_confirm",TlsCertificate.fingerprint(imported)))
+                            .setNegativeButton(I18n.s("cancel"),null)
+                            .setPositiveButton(I18n.s("certificate_trust"),(d,w) -> {trustedCertificate=imported;certificateSummary();}).show();
+                } catch(Exception e) {testStatus.setText(I18n.s("certificate_invalid"));}
+            });
+        },"iben-certificate").start();
+    }
     private void busy(boolean value) {
         working = value;
-        for (View view : new View[]{address, user, password, enabled, unmetered, save, test, now, pause}) view.setEnabled(!value);
+        for (View view : new View[]{address, user, password, enabled, unmetered, localHttp,certificateImport,certificateClear,save, test, now, pause}) view.setEnabled(!value);
     }
     private final Runnable poll = new Runnable() {
         @Override public void run() { refresh(); timer.postDelayed(this, 1000L); }

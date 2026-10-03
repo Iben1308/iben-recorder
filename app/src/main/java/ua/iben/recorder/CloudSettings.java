@@ -14,24 +14,31 @@ final class CloudSettings {
     boolean unmetered() { return prefs.getBoolean("unmetered", true); }
     boolean hasSecret() { return !prefs.getString("password_cipher", "").isEmpty(); }
     long revision() { return prefs.getLong("revision", 0); }
-    DavTarget target() { return new DavTarget(folder(), username()); }
+    boolean localHttp() { return !targetKey().isEmpty() && targetKey().equals(prefs.getString("http_target","")); }
+    String certificate() { return targetKey().equals(prefs.getString("certificate_target","")) ? prefs.getString("certificate","") : ""; }
+    DavTarget target() { return new DavTarget(folder(), username(),localHttp()); }
     static final class Connection {
         final DavTarget target;
-        final String password;
+        final String password,certificate;
         final long revision;
-        Connection(DavTarget target, String password, long revision) {
-            this.target = target; this.password = password; this.revision = revision;
+        DavClient client(DavClient.Progress progress) { return new DavClient(target,password,progress,certificate); }
+        Connection(DavTarget target, String password, long revision,String certificate) {
+            this.target = target; this.password = password; this.revision = revision;this.certificate=certificate;
         }
     }
     Connection connection() throws IOException {
-        synchronized (RecordingFiles.LOCK) { return new Connection(target(), password(), revision()); }
+        synchronized (RecordingFiles.LOCK) { return new Connection(target(), password(), revision(),certificate()); }
     }
     String password() throws IOException {
         try { return SecretStore.decrypt(prefs.getString("password_cipher", "")); }
         catch (Exception e) { throw new IOException("Не вдалося прочитати збережений пароль. Введіть пароль застосунку повторно"); }
     }
-    void save(String folder, String username, String password, boolean enabled, boolean unmetered) throws Exception {
-        DavTarget target = new DavTarget(folder, username);
+    void save(String folder, String username, String password, boolean enabled, boolean unmetered,boolean localHttp,String certificate) throws Exception {
+        DavTarget target = new DavTarget(folder, username,localHttp);
+        if(!certificate.isEmpty()) {
+            if(!target.folder.startsWith("https://"))throw new IllegalArgumentException(I18n.s("certificate_https_only"));
+            TlsCertificate.decode(certificate).checkValidity();
+        }
         String encrypted = password.isEmpty() ? null : SecretStore.encrypt(password);
         synchronized (RecordingFiles.LOCK) {
             String cipher = encrypted;
@@ -43,6 +50,8 @@ final class CloudSettings {
             }
             if (!prefs.edit().putString("folder", target.folder).putString("username", target.username)
                     .putString("target", target.key).putString("password_cipher", cipher)
+                    .putString("http_target",target.folder.startsWith("http://") && localHttp ? target.key : "")
+                    .putString("certificate_target",certificate.isEmpty() ? "" : target.key).putString("certificate",certificate)
                     .putBoolean("enabled", enabled).putBoolean("unmetered", unmetered)
                     .putLong("revision", revision() + 1).putInt("failures", 0).putLong("retry_at", 0)
                     .putString("status", enabled ? "Очікування передачі" : "Передачу вимкнено; непередані файли захищені").commit())

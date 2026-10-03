@@ -35,6 +35,8 @@ public final class WebDavTest {
     private final AtomicInteger puts = new AtomicInteger(), deletes = new AtomicInteger(), leaks = new AtomicInteger();
     private volatile int putStatus;
     private volatile boolean lostAck, dropPut, race, redirect, corrupt;
+    private volatile boolean weakEtag, noEtag, deleteRace, lostDeleteAck;
+    private volatile int deleteStatus;
     private HttpServer server;
     private ExecutorService executor;
     private int port;
@@ -131,12 +133,74 @@ public final class WebDavTest {
             int count=remote.size();
             try(DavClient c=client(QUIET)) { c.test(directory); }
             check(remote.size()==count && deletes.get()==1, "Connection probe creates and removes only its own test file");
+            deletionCases(source, bytes);
             check(source.isFile() && Arrays.equals(Files.readAllBytes(source.toPath()),bytes), "All paths leave the local recording intact");
         } finally {
             server.stop(0); executor.shutdownNow();
             for(File f:directory.listFiles()) if(!f.delete()) throw new IOException("Test cleanup failed");
             if(!directory.delete()) throw new IOException("Test directory cleanup failed");
         }
+    }
+    private void deletionCases(File source, byte[] bytes) throws Exception {
+        String name = "delete-one.m4a", path = ROOT + name, sha = hash(bytes);
+        int before = deletes.get(), retained = remote.size();
+        remote.put(path, bytes);
+        try (DavClient c=client(QUIET)) { c.deleteRecording(name, bytes.length, sha); }
+        check(!remote.containsKey(path) && remote.size()==retained && deletes.get()==before+1,
+                "An explicit DELETE removes only the exact content-verified recording");
+        try (DavClient c=client(QUIET)) { c.deleteRecording(name, bytes.length, sha); }
+        check(deletes.get()==before+1, "An already absent remote recording is idempotent without another DELETE");
+
+        byte[] other=bytes.clone(); other[7]^=1;
+        remote.put(path, other); before=deletes.get();
+        expectFailure(() -> {try(DavClient c=client(QUIET)){c.deleteRecording(name,bytes.length,sha);}},DavClient.Conflict.class);
+        check(Arrays.equals(remote.get(path),other) && deletes.get()==before,
+                "A different recording with the same name and size is never deleted");
+        remote.put(path, bytes); deleteRace=true;
+        expectFailure(() -> {try(DavClient c=client(QUIET)){c.deleteRecording(name,bytes.length,sha);}},DavClient.Conflict.class);
+        check(remote.containsKey(path) && !Arrays.equals(remote.get(path),bytes) && deletes.get()==before,
+                "If-Match protects a replacement arriving between GET verification and DELETE");
+        remote.put(path,bytes);
+        for (int mode=0; mode<2; mode++) {
+            weakEtag=mode==0; noEtag=mode==1;
+            expectFailure(() -> {try(DavClient c=client(QUIET)){c.deleteRecording(name,bytes.length,sha);}},IOException.class);
+            check(Arrays.equals(remote.get(path),bytes) && deletes.get()==before,
+                    "Weak or missing ETags never authorize unconditional deletion");
+        }
+        weakEtag=false; noEtag=false;
+        for (int code:new int[]{401,403,423,500}) {
+            deleteStatus=code;
+            expectFailure(() -> {try(DavClient c=client(QUIET)){c.deleteRecording(name,bytes.length,sha);}},IOException.class);
+            check(remote.containsKey(path) && source.isFile(), "Rejected deletion preserves both copies");
+        }
+        deleteStatus=0; redirect=true;
+        expectFailure(() -> {try(DavClient c=client(QUIET)){c.deleteRecording(name,bytes.length,sha);}},IOException.class);
+        check(leaks.get()==0 && remote.containsKey(path), "Deletion never follows redirects or leaks credentials");
+        redirect=false;
+        try(DavClient c=client(QUIET)) {
+            c.cancel(); expectFailure(() -> c.deleteRecording(name,bytes.length,sha),InterruptedIOException.class);
+        }
+        AtomicInteger guard = new AtomicInteger();
+        try(DavClient c=client(QUIET)) {
+            expectFailure(() -> c.deleteRecording(name,bytes.length,sha,() -> guard.getAndIncrement()==0),InterruptedIOException.class);
+        }
+        check(remote.containsKey(path) && deletes.get()==before, "A changed connection after GET prevents DELETE");
+        final DavClient[] active=new DavClient[1];
+        active[0]=client((phase,done,total)-> { if(done>0) active[0].cancel(); });
+        try(DavClient c=active[0]) {expectFailure(() -> c.deleteRecording(name,bytes.length,sha),IOException.class);}
+        check(remote.containsKey(path) && deletes.get()==before, "Cancel during verification leaves the remote recording intact");
+        for(String invalid:new String[]{"../escape.m4a","folder/recording.m4a","*","folder/","note.txt"}) {
+            expectFailure(() -> {try(DavClient c=client(QUIET)){c.deleteRecording(invalid,bytes.length,sha);}},IOException.class);
+        }
+        expectFailure(() -> {try(DavClient c=client(QUIET)){c.deleteRecording(name,bytes.length,"bad");}},IOException.class);
+        check(remote.containsKey(path) && deletes.get()==before, "Directories, traversal, wildcards and missing receipts cannot delete");
+        lostDeleteAck=true;
+        expectFailure(() -> {try(DavClient c=client(QUIET)){c.deleteRecording(name,bytes.length,sha);}},IOException.class);
+        check(!remote.containsKey(path) && source.isFile(), "A lost DELETE acknowledgement still keeps the local source");
+        int afterLost=deletes.get();
+        try(DavClient c=client(QUIET)) {c.deleteRecording(name,bytes.length,sha);}
+        check(deletes.get()==afterLost && afterLost==before+1, "Retry after lost DELETE response confirms absence without a second deletion");
+        check(Arrays.equals(Files.readAllBytes(source.toPath()),bytes), "Cloud-only paths leave local audio bytes unchanged");
     }
     private void handle(HttpExchange exchange) throws IOException {
         try {
@@ -149,7 +213,7 @@ public final class WebDavTest {
                 case "GET": {
                     byte[] data=remote.get(path);
                     if(data==null) {reply(exchange,404,null);return;}
-                    exchange.getResponseHeaders().set("ETag","\""+hash(data)+"\"");
+                    if (!noEtag) exchange.getResponseHeaders().set("ETag",(weakEtag ? "W/" : "")+"\""+hash(data)+"\"");
                     if(corrupt) {data=data.clone();data[0]^=1;}
                     reply(exchange,200,data);return;
                 }
@@ -171,10 +235,15 @@ public final class WebDavTest {
                     reply(exchange,201,null);return;
                 }
                 case "DELETE": {
-                    if(!path.contains("/.iben-connection-test-")) {reply(exchange,403,null);return;}
+                    if(deleteStatus!=0) {reply(exchange,deleteStatus,null);return;}
                     byte[] current=remote.get(path);
+                    if (deleteRace && current!=null) {
+                        deleteRace=false; current=current.clone(); current[0]^=1; remote.put(path,current);
+                    }
                     if(current!=null && !("\""+hash(current)+"\"").equals(exchange.getRequestHeaders().getFirst("If-Match"))) {reply(exchange,412,null);return;}
-                    remote.remove(path);deletes.incrementAndGet();reply(exchange,204,null);return;
+                    remote.remove(path);deletes.incrementAndGet();
+                    if (lostDeleteAck) {lostDeleteAck=false;reply(exchange,500,null);return;}
+                    reply(exchange,204,null);return;
                 }
                 default:reply(exchange,405,null);
             }

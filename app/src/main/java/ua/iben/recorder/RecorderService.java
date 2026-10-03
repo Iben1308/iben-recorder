@@ -34,6 +34,11 @@ public final class RecorderService extends Service {
         if (!posted && command.isHeld()) command.release();
         return posted;
     }
+    static RecordingPosition.Moment bookmarkPosition() {
+        RecorderService service=instance;
+        ContinuousRecorder engine=service==null ? null : service.recorder;
+        return engine==null ? null : engine.bookmarkPosition();
+    }
     private boolean foregroundStarted;
     private static final String CHANNEL = "recording";
     private static final int NOTIFICATION = 1;
@@ -42,7 +47,7 @@ public final class RecorderService extends Service {
     private PowerManager.WakeLock wakeLock;
     private Config config;
     private RecordingFiles files;
-    private ContinuousRecorder recorder;
+    private volatile ContinuousRecorder recorder;
     private volatile boolean destroying;
     private int retryCount;
     private int latestStartId;
