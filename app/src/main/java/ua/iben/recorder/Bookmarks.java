@@ -11,6 +11,9 @@ import java.util.function.LongConsumer;
 final class Bookmarks {
     private static boolean closed(Activity activity) { return activity.isDestroyed() || activity.isFinishing(); }
     static void add(Activity activity,Ui ui,String recordId,long position) {
+        add(activity,ui,recordId,position,() -> { });
+    }
+    static void add(Activity activity,Ui ui,String recordId,long position,Runnable changed) {
         Context app=activity.getApplicationContext();
         RecordEdits.worker.execute(() -> {
             RecordIndex.Bookmark added=null;String error=null;
@@ -22,11 +25,11 @@ final class Bookmarks {
             activity.runOnUiThread(() -> {
                 if(closed(activity))return;
                 if(problem!=null)ui.toast(problem);
-                else { ui.toast(I18n.s("bookmark_saved",Ui.clock(bookmark.position)));edit(activity,ui,bookmark,true); }
+                else { changed.run();ui.toast(I18n.s("bookmark_saved",Ui.clock(bookmark.position)));edit(activity,ui,bookmark,true,changed); }
             });
         });
     }
-    private static void edit(Activity activity,Ui ui,RecordIndex.Bookmark bookmark,boolean added) {
+    private static void edit(Activity activity,Ui ui,RecordIndex.Bookmark bookmark,boolean added,Runnable changed) {
         EditText label=new EditText(activity);label.setSingleLine(true);
         label.setFilters(new InputFilter[]{new InputFilter.LengthFilter(160)});
         label.setHint(I18n.s("bookmark_note"));label.setText(bookmark.label);
@@ -42,11 +45,11 @@ final class Bookmarks {
                             catch(Exception e) { success=false; }
                         }
                         boolean ok=success;
-                        activity.runOnUiThread(() -> { if(!closed(activity))ui.toast(I18n.s(ok ? "bookmark_note_saved" : "bookmark_unavailable")); });
+                        activity.runOnUiThread(() -> { if(!closed(activity)) {if(ok)changed.run();ui.toast(I18n.s(ok ? "bookmark_note_saved" : "bookmark_unavailable"));} });
                     });
                 }).show();
     }
-    static void show(Activity activity,Ui ui,String recordId,LongConsumer seek) {
+    static void show(Activity activity,Ui ui,String recordId,LongConsumer seek,Runnable changed) {
         Context app=activity.getApplicationContext();
         RecordEdits.worker.execute(() -> {
             List<RecordIndex.Bookmark> found=null;
@@ -71,7 +74,7 @@ final class Bookmarks {
                     RecordIndex.Bookmark bookmark=marks.get(p);dialog.dismiss();
                     new AlertDialog.Builder(activity).setTitle(labels[p])
                             .setItems(new String[]{I18n.s("bookmark_edit"),I18n.s("bookmark_delete")},(d,w) -> {
-                                if(w==0)edit(activity,ui,bookmark,false);
+                                if(w==0)edit(activity,ui,bookmark,false,changed);
                                 else new AlertDialog.Builder(activity).setTitle(I18n.s("bookmark_delete"))
                                         .setMessage(labels[p]).setNegativeButton(I18n.s("cancel"),null)
                                         .setPositiveButton(I18n.s("delete_action"),(confirm,which) -> RecordEdits.worker.execute(() -> {
@@ -81,7 +84,7 @@ final class Bookmarks {
                                                 catch(Exception e) { ok=false; }
                                             }
                                             boolean success=ok;
-                                            activity.runOnUiThread(() -> { if(!closed(activity))ui.toast(I18n.s(success ? "bookmark_deleted" : "bookmark_unavailable")); });
+                                            activity.runOnUiThread(() -> { if(!closed(activity)) {if(success)changed.run();ui.toast(I18n.s(success ? "bookmark_deleted" : "bookmark_unavailable"));} });
                                         })).show();
                             }).show();
                     return true;

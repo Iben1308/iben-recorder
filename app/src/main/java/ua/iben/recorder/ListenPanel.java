@@ -42,8 +42,9 @@ final class ListenPanel {
     // Preserve edits made while an asynchronous list query is in flight.
     private final Map<String, RecordingFiles.Item> changedWhileLoading = new HashMap<>();
     private final RecordsAdapter adapter = new RecordsAdapter();
-    private final TextView selectedLabel, clock, analysis, count;
-    private final Button play, zoom, mark, delete, important, addBookmark, bookmarks;
+    private final TextView selectedLabel, clock, analysis, count, bookmarkLegend;
+    private final Button play, zoom, mark, delete, important, addBookmark, bookmarks, export;
+    private final LinearLayout playerCard;
     private final WaveformView wave;
     private final SeekBar timeline;
     private MediaPlayer player;
@@ -55,11 +56,11 @@ final class ListenPanel {
     private final java.util.Set<String> chosen=new java.util.LinkedHashSet<>();
     private LinearLayout selectionBar;
     private TextView selectionCount;
-    private Button selectionToggle;
+    private Button selectionToggle, batchActionButton;
     private BatchWork batchWork;
     private CloudDeletionTask cloudDeletion;
     private AlertDialog deletionDialog;
-    private long generation, savedPosition, lastSavedAt, observedPosition = -1, observedAt, pendingSeek;
+    private long generation, bookmarkGeneration, savedPosition, lastSavedAt, observedPosition = -1, observedAt, pendingSeek;
     private boolean ready, gone, seeking, loading, analysisReady, visible, seekPending, startAfterSeek, ended, cacheLoading, needsAnalysis;
     private int filter;
     private float speed;
@@ -77,9 +78,11 @@ final class ListenPanel {
         filter = Math.max(0, Math.min(3, config.prefs.getInt("listen_filter", 0)));
         view = ui.column(); view.setPadding(ui.dp(14), ui.dp(12), ui.dp(14), 0);
         LinearLayout header = ui.column(), card = ui.card(header);
+        playerCard = card;
         selectedLabel = ui.text(card, I18n.s("choose_recording"), 15, ui.ink);
         clock = ui.text(card, "00:00:00 / 00:00:00", 22, ui.ink);
         wave = new WaveformView(ui, this::seek); card.addView(wave, new LinearLayout.LayoutParams(-1, ui.dp(120)));
+        bookmarkLegend=ui.text(card,"",12,ui.bookmark);bookmarkLegend.setVisibility(View.GONE);
         timeline = new SeekBar(activity); timeline.setMax(10000); card.addView(timeline);
         timeline.setContentDescription(I18n.s("position"));
         timeline.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
@@ -114,24 +117,24 @@ final class ListenPanel {
         important=ui.button(card,I18n.s("important_add"),() -> {if(selected!=null)important(selected,!selected.important);},false);
         LinearLayout bookmarkRow=ui.row();card.addView(bookmarkRow);
         addBookmark=ui.button(null,I18n.s("bookmark_add"),() -> {
-            if(selected!=null && !deleting)Bookmarks.add(activity,ui,selected.id,position());
+            if(selected!=null && !deleting && !selecting)Bookmarks.add(activity,ui,selected.id,position(),this::loadBookmarks);
         },false);ui.equal(bookmarkRow,addBookmark);
         bookmarks=ui.button(null,I18n.s("bookmarks"),() -> {
-            if(selected==null || deleting)return;
+            if(selected==null || deleting || selecting)return;
             RecordingFiles.Item item=selected;
             Bookmarks.show(activity,ui,item.id,millis -> {
-                if(gone || deleting)return;
+                if(gone || deleting || selecting)return;
                 if(selected==null || !item.id.equals(selected.id) || player==null) {
                     open(item,false);savedPosition=Math.max(0,Math.min(item.duration-1,millis));
                     if(selected!=null)selected.position=savedPosition;
                 } else if(!ready) {
                     savedPosition=Math.max(0,Math.min(item.duration-1,millis));selected.position=savedPosition;
                 } else seek(millis);
-            });
+            },this::loadBookmarks);
         },false);ui.equal(bookmarkRow,bookmarks);
-        ui.button(card, I18n.s("export_recording"), () -> {
+        export = ui.button(card, I18n.s("export_recording"), () -> {
             if (selected == null) { ui.toast(I18n.s("choose_recording")); return; }
-            if (!deleting) activity.exportRecording(selected);
+            if (!deleting && !selecting) activity.exportRecording(selected);
         }, false);
         delete = ui.button(card, I18n.s("delete_recording"), () -> { if (selected != null) chooseDeletion(selected); }, false);
         delete.setTextColor(ui.red); delete.setEnabled(false);
@@ -145,7 +148,7 @@ final class ListenPanel {
         count = ui.text(null, I18n.s("recordings"), 16, ui.ink); ui.equal(listHeader, count);
         ui.equal(listHeader, ui.button(null, I18n.s("refresh"), this::load, false));
         selectionToggle=ui.button(header,I18n.s("batch_select"),() -> {
-            if(deleting)return;selecting=!selecting;chosen.clear();updateSelection();adapter.notifyDataSetChanged();
+            if(deleting)return;chosen.clear();setSelecting(!selecting);adapter.notifyDataSetChanged();
         },false);
         selectionBar=ui.column();header.addView(selectionBar);
         selectionCount=ui.text(selectionBar,"",13,ui.muted);
@@ -157,7 +160,7 @@ final class ListenPanel {
         ui.equal(selectionButtons,ui.button(null,I18n.s("batch_clear"),() -> {
             if(deleting)return;chosen.clear();updateSelection();adapter.notifyDataSetChanged();
         },false));
-        ui.equal(selectionButtons,ui.button(null,I18n.s("batch_actions"),this::batchActions,true));
+        batchActionButton=ui.button(selectionBar,I18n.s("batch_actions"),this::batchActions,true);
         updateSelection();
         Spinner filters = ui.spinner(header, new String[]{I18n.s("filter_all"), I18n.s("filter_unlistened"), I18n.s("filter_listened"), I18n.s("filter_important")}, filter);
         filters.setContentDescription(I18n.s("record_filter"));
@@ -183,7 +186,11 @@ final class ListenPanel {
             int index=p-list.getHeaderViewsCount();
             if(index<0 || index>=rows.size() || deleting)return false;
             Row row=rows.get(index);
-            if(row.item==null) { selecting=true;chooseDay(row.day);return true; }
+            if(row.item==null) { setSelecting(true);chooseDay(row.day);return true; }
+            if(selecting) {
+                if(!chosen.remove(row.item.id))chosen.add(row.item.id);
+                updateSelection();adapter.notifyDataSetChanged();return true;
+            }
             RecordingFiles.Item item=row.item;
             List<String> actions=new ArrayList<>();
             actions.add(I18n.s(item.listened ? "mark_unlistened" : "mark_listened"));
@@ -195,7 +202,7 @@ final class ListenPanel {
                 if(which==0)mark(item,!item.listened);
                 else if(which==1)important(item,!item.important);
                 else if(which==2)chooseDeletion(item);
-                else if(which==3) { selecting=true;chosen.add(item.id);updateSelection();adapter.notifyDataSetChanged(); }
+                else if(which==3) { chosen.add(item.id);setSelecting(true);adapter.notifyDataSetChanged(); }
                 else confirmUploadAgain(item);
             }).show();
             return true;
@@ -235,7 +242,7 @@ final class ListenPanel {
                     if (!found) clearSelection();
                 }
                 rebuildRows();
-                if (selected == null && visible) {
+                if (selected == null && visible && !selecting) {
                     String last = config.prefs.getString("last_recording", "");
                     for (RecordingFiles.Item item : items) if (item.id.equals(last)) { open(item, false); break; }
                 }
@@ -249,7 +256,7 @@ final class ListenPanel {
         return !(filter==1 && item.listened || filter==2 && !item.listened || filter==3 && !item.important);
     }
     private void important(RecordingFiles.Item item,boolean value) {
-        if(deleting || gone)return;
+        if(deleting || gone || selecting)return;
         worker.execute(() -> {
             boolean changed=false;
             try(RecordingFiles files=new RecordingFiles(app,config)) {changed=files.important(item,value);}
@@ -296,14 +303,26 @@ final class ListenPanel {
     }
     private void updateSelection() {
         if(selectionBar==null)return;
+        playerCard.setVisibility(selecting ? View.GONE : View.VISIBLE);
         selectionBar.setVisibility(selecting ? View.VISIBLE : View.GONE);
         selectionToggle.setText(I18n.s(selecting ? "batch_finish" : "batch_select"));
         List<RecordingFiles.Item> list=selectedItems();long bytes=0;
         for(RecordingFiles.Item item:list)bytes+=item.bytes;
         selectionCount.setText(I18n.s("batch_count",list.size(),bytes/1048576d));
+        batchActionButton.setEnabled(selecting && !deleting && !list.isEmpty());
+        updateMark();
+    }
+    private void setSelecting(boolean value) {
+        if(value && !selecting)releasePlayer();
+        selecting=value;updateSelection();
+        if(!value && visible && !deleting && selected!=null && player==null)open(selected,false);
+    }
+    boolean finishSelection() {
+        if(!selecting || deleting)return false;
+        chosen.clear();setSelecting(false);adapter.notifyDataSetChanged();return true;
     }
     private void batchActions() {
-        if(deleting || gone)return;
+        if(deleting || gone || !selecting)return;
         List<RecordingFiles.Item> list=selectedItems();
         if(list.isEmpty()) {ui.toast(I18n.s("batch_choose"));return;}
         String[] labels={I18n.s("mark_listened"),I18n.s("mark_unlistened"),I18n.s("important_add"),
@@ -366,15 +385,16 @@ final class ListenPanel {
         BatchWork task=batchWork;worker.execute(task::start);
     }
     private void updateMark() {
-        important.setEnabled(selected!=null && !deleting);
+        boolean enabled=selected!=null && !deleting && !selecting;
+        important.setEnabled(enabled);
         important.setText(I18n.s(selected!=null && selected.important ? "important_remove" : "important_add"));
-        addBookmark.setEnabled(selected!=null && !deleting);bookmarks.setEnabled(selected!=null && !deleting);
-        mark.setEnabled(selected != null && !deleting);
-        delete.setEnabled(selected != null && !deleting);
+        addBookmark.setEnabled(enabled);bookmarks.setEnabled(enabled);export.setEnabled(enabled);
+        mark.setEnabled(enabled);
+        delete.setEnabled(enabled);
         mark.setText(I18n.s(selected != null && selected.listened ? "mark_unlistened" : "mark_listened"));
     }
     private void mark(RecordingFiles.Item item, boolean heard) {
-        if (deleting) return;
+        if (deleting || selecting) return;
         if (selected != null && selected.id.equals(item.id)) checkpoint(heard);
         else {
             item.listened = heard;
@@ -384,7 +404,7 @@ final class ListenPanel {
         rebuildRows();
     }
     private void chooseDeletion(RecordingFiles.Item item) {
-        if (deleting || gone) return;
+        if (deleting || gone || selecting) return;
         new AlertDialog.Builder(activity).setTitle(I18n.s("delete_recording"))
                 .setItems(new String[]{I18n.s("delete_local"), I18n.s("delete_cloud"), I18n.s("delete_both")},
                         (dialog, which) -> confirmDelete(item, which)).show();
@@ -510,6 +530,7 @@ final class ListenPanel {
     }
     private void clearSelection() {
         releasePlayer(); generation++;
+        bookmarkGeneration++; wave.bookmarks(new long[0]);bookmarkLegend.setVisibility(View.GONE);
         selected = null; progress = null; savedPosition = 0; ended = false;
         analysisReady = false; cacheLoading = false; needsAnalysis = false; waveState = null;
         selectedLabel.setText(I18n.s("choose_recording")); analysis.setText(I18n.s("wave_hint"));
@@ -533,7 +554,7 @@ final class ListenPanel {
         persist(selected.id, savedPosition, selected.heardRanges, heard); lastSavedAt = SystemClock.elapsedRealtime();
     }
     private void open(RecordingFiles.Item item, boolean autoplay) {
-        if (deleting) return;
+        if (deleting || selecting) return;
         releasePlayer();
         if (selected != null && selected.id.equals(item.id)) copyState(selected, item);
         selected = item; savedPosition = PlaybackProgress.resume(item.position, item.duration);
@@ -541,6 +562,7 @@ final class ListenPanel {
         progress = new PlaybackProgress(item.duration, item.heardRanges);
         config.prefs.edit().putString("last_recording", item.id).apply();
         selectedLabel.setText(item.name); wave.data(null, item.duration, config.silenceDb()); zoom.setText("1×");
+        wave.bookmarks(new long[0]);bookmarkLegend.setVisibility(View.GONE);loadBookmarks();
         clock.setText(Ui.clock(savedPosition) + " / " + Ui.clock(item.duration));
         try {
             lease = RecordingFiles.lease(item.file);
@@ -578,9 +600,9 @@ final class ListenPanel {
     void visible(boolean value) {
         visible = value;
         if (!value) pause();
-        else if (selected != null && player == null) open(selected, false);
+        else if (!selecting && selected != null && player == null) open(selected, false);
     }
-    private void toggle() { if (deleting) return; if (isPlaying()) pause(); else if (ready) resume(); else if (selected != null && player == null) open(selected, true); }
+    private void toggle() { if (deleting || selecting) return; if (isPlaying()) pause(); else if (ready) resume(); else if (selected != null && player == null) open(selected, true); }
     private void track(boolean completion) {
         if (!ready || progress == null || seekPending || (!completion && !isPlaying())) return;
         long now = SystemClock.elapsedRealtime(), at = completion ? duration() : position();
@@ -591,7 +613,7 @@ final class ListenPanel {
         observedPosition = completion ? -1 : at; observedAt = now;
     }
     private void resume() {
-        if (!ready || player == null || !visible || deleting) return;
+        if (!ready || player == null || !visible || deleting || selecting) return;
         if (seekPending) { startAfterSeek = true; return; }
         if (ended) { ended = false; startAfterSeek = true; seek(0); return; }
         if (audio.requestAudioFocus(focus, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN) != AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
@@ -633,7 +655,7 @@ final class ListenPanel {
         catch (RuntimeException e) { return savedPosition; }
     }
     void tick() {
-        if (deleting) return;
+        if (deleting || selecting) return;
         updateAnalysis();
         if (selected == null) { play.setEnabled(false); return; }
         track(false);
@@ -663,8 +685,28 @@ final class ListenPanel {
             });
         });
     }
+    private void loadBookmarks() {
+        if(gone || selected==null)return;
+        String id=selected.id;long request=++bookmarkGeneration;
+        worker.execute(() -> {
+            long[] positions;
+            synchronized(RecordingFiles.LOCK) {
+                try(RecordIndex index=new RecordIndex(app)) {
+                    List<RecordIndex.Bookmark> marks=index.bookmarks(id);positions=new long[marks.size()];
+                    for(int i=0;i<positions.length;i++)positions[i]=marks.get(i).position;
+                } catch(RuntimeException e) { positions=new long[0]; }
+            }
+            long[] result=positions;
+            activity.runOnUiThread(() -> {
+                if(!gone && request==bookmarkGeneration && selected!=null && id.equals(selected.id)) {
+                    wave.bookmarks(result);bookmarkLegend.setVisibility(result.length==0 ? View.GONE : View.VISIBLE);
+                    bookmarkLegend.setText(I18n.s("wave_bookmarks",result.length));
+                }
+            });
+        });
+    }
     private void updateAnalysis() {
-        if (selected == null || analysisReady || cacheLoading || deleting) return;
+        if (selected == null || analysisReady || cacheLoading || deleting || selecting) return;
         if (needsAnalysis && visible) { needsAnalysis = false; WaveformService.request(app, selected.id); }
         WaveformService.State state = WaveformService.state(selected.id);
         if (state == null) { analysis.setText(I18n.s("wave_start_hint")); return; }
@@ -695,7 +737,7 @@ final class ListenPanel {
         if (batchWork != null) batchWork.cancel();
         if (deletionDialog != null) { deletionDialog.dismiss(); deletionDialog = null; }
     }
-    void destroy() { suspend(); gone = true; generation++; activity.unregisterReceiver(noisy); }
+    void destroy() { suspend(); gone = true; generation++; bookmarkGeneration++; activity.unregisterReceiver(noisy); }
 
     private static final class Row {
         final RecordingFiles.Item item;

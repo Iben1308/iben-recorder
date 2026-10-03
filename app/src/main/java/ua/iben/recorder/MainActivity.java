@@ -20,7 +20,7 @@ public final class MainActivity extends Activity {
     private Ui ui;
     private final Handler timer = new Handler(Looper.getMainLooper());
     private final View[] pages = new View[3];
-    private final Button[] tabs = new Button[3];
+    private final ImageButton[] tabs = new ImageButton[3];
     private ListenPanel listen;
     private SettingsPanel settings;
     private TextView status, duration, details, gainLabel, levelLabel, cloud, input;
@@ -50,12 +50,17 @@ public final class MainActivity extends Activity {
         pages[1] = recordPage();
         settings = new SettingsPanel(this, ui, config, state); pages[2] = settings.view;
         for (View page : pages) body.addView(page, new FrameLayout.LayoutParams(-1, -1));
-        LinearLayout bar = ui.row(); bar.setPadding(ui.dp(8), ui.dp(4), ui.dp(8), ui.dp(6)); root.addView(bar);
+        View divider = new View(this); divider.setBackgroundColor(ui.pale);
+        root.addView(divider, new LinearLayout.LayoutParams(-1, ui.dp(1)));
+        LinearLayout bar = ui.row(); bar.setBackgroundColor(ui.card);
+        bar.setPadding(ui.dp(16), ui.dp(8), ui.dp(16), ui.dp(8)); root.addView(bar);
         String[] labels = {I18n.s("listen"), I18n.s("record"), I18n.s("settings")};
+        int[] icons = {R.drawable.ic_speaker, R.drawable.ic_mic, R.drawable.ic_settings};
         for (int i = 0; i < 3; i++) {
             final int index = i;
-            tabs[i] = ui.button(null, labels[i], () -> tab(index), false); tabs[i].setTextSize(13);
-            bar.addView(tabs[i], new LinearLayout.LayoutParams(0, ui.dp(52), 1));
+            tabs[i] = ui.icon(icons[i], labels[i], () -> tab(index));
+            LinearLayout.LayoutParams slot = new LinearLayout.LayoutParams(0, ui.dp(52), 1);
+            slot.setMargins(ui.dp(6), 0, ui.dp(6), 0); bar.addView(tabs[i], slot);
         }
         setContentView(root); Platform.insets(this, root, ui.dark);
         exportId = state == null ? null : state.getString("export_id");
@@ -87,7 +92,7 @@ public final class MainActivity extends Activity {
         },false);
         details = ui.text(main, "", 13, ui.muted);
         LinearLayout sound = ui.card(page);
-        ui.title(sound, I18n.s("sound"));
+        ui.helpTitle(sound, I18n.s("sound"), I18n.s("gain_hint"));
         levelLabel = ui.text(sound, "", 14, ui.ink);
         level = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         level.setMax(100); sound.addView(level, new LinearLayout.LayoutParams(-1, ui.dp(12)));
@@ -102,7 +107,6 @@ public final class MainActivity extends Activity {
             @Override public void onStartTrackingTouch(SeekBar b) { }
             @Override public void onStopTrackingTouch(SeekBar b) { }
         });
-        ui.text(sound, I18n.s("gain_hint"), 12, ui.muted);
         input = ui.text(sound, "", 12, ui.muted);
         LinearLayout storage = ui.card(page);
         ui.title(storage, I18n.s("webdav_title")); cloud = ui.text(storage, "", 13, ui.muted);
@@ -114,9 +118,7 @@ public final class MainActivity extends Activity {
         currentTab = index;
         for (int i = 0; i < 3; i++) {
             pages[i].setVisibility(i == index ? View.VISIBLE : View.GONE);
-            tabs[i].setBackgroundTintList(android.content.res.ColorStateList.valueOf(i == index ? ui.accent : ui.pale));
-            tabs[i].setTextColor(i == index ? ui.background : ui.accent);
-            tabs[i].setSelected(i == index);
+            ui.navigationState(tabs[i], i == index);
         }
         config.prefs.edit().putInt("last_tab", index).apply();
         if (index == 0 && resumed) listen.load();
@@ -125,6 +127,10 @@ public final class MainActivity extends Activity {
     @Override protected void onNewIntent(Intent intent) { super.onNewIntent(intent); setIntent(intent); if (intent.hasExtra("tab")) tab(Math.max(0,Math.min(2,intent.getIntExtra("tab", 1)))); if(intent.hasExtra("settings_section"))settings.showSection(intent.getIntExtra("settings_section",0)); }
     @Override protected void onSaveInstanceState(Bundle state) {
         super.onSaveInstanceState(state); state.putString("export_id", exportId);state.putStringArrayList("export_ids",exportIds); state.putInt("tab", currentTab); settings.saveDraft(state);
+    }
+    @Override public void onBackPressed() {
+        if(currentTab==0 && listen.finishSelection())return;
+        super.onBackPressed();
     }
     void recordingPermission(Runnable action) { permission(Platform.permissions(true), () -> notificationPermission(action)); }
     void storagePermission(Runnable action) { permission(Platform.permissions(false), action); }

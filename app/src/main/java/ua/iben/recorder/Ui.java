@@ -1,18 +1,20 @@
 package ua.iben.recorder;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.res.Configuration;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.RippleDrawable;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.*;
 
 final class Ui {
     final Activity activity;
-    final int ink, muted, accent, card, background, pale, red;
+    final int ink, muted, accent, card, background, pale, red, bookmark;
     final boolean dark;
     Ui(Activity activity, Config config) {
         this.activity = activity;
@@ -25,6 +27,7 @@ final class Ui {
         card = Color.parseColor(dark ? "#1B2B24" : "#FFFFFF");
         pale = Color.parseColor(dark ? "#2B4237" : "#E1ECE4");
         red = Color.parseColor(dark ? "#FFB4AA" : "#B23C35");
+        bookmark = Color.parseColor(dark ? "#FFD079" : "#946000");
     }
     int dp(float value) { return Math.round(value * activity.getResources().getDisplayMetrics().density); }
     LinearLayout column() { LinearLayout v = new LinearLayout(activity); v.setOrientation(LinearLayout.VERTICAL); return v; }
@@ -44,6 +47,44 @@ final class Ui {
     TextView title(LinearLayout parent, String text) {
         TextView v = text(parent, text, 19, ink); v.setTypeface(Typeface.DEFAULT, Typeface.BOLD); return v;
     }
+    ImageButton icon(int resource, String label, Runnable action) {
+        ImageButton button = new ImageButton(activity);
+        button.setImageResource(resource); button.setImageTintList(ColorStateList.valueOf(accent));
+        button.setScaleType(ImageView.ScaleType.CENTER_INSIDE);
+        button.setPadding(dp(12), dp(12), dp(12), dp(12));
+        button.setMinimumWidth(dp(48)); button.setMinimumHeight(dp(48));
+        button.setContentDescription(label); button.setTooltipText(label);
+        button.setBackground(new RippleDrawable(ColorStateList.valueOf((accent & 0x00ffffff) | 0x30000000),
+                shape(Color.TRANSPARENT, 20), shape(Color.WHITE, 20)));
+        button.setOnClickListener(v -> action.run()); return button;
+    }
+    void navigationState(ImageButton button, boolean selected) {
+        button.setSelected(selected);
+        button.setImageTintList(ColorStateList.valueOf(selected ? background : muted));
+        button.setBackground(new RippleDrawable(ColorStateList.valueOf((accent & 0x00ffffff) | 0x30000000),
+                shape(selected ? accent : Color.TRANSPARENT, 20), shape(Color.WHITE, 20)));
+    }
+    void help(LinearLayout parent, View control, String title, String explanation) {
+        LinearLayout row = row(); parent.addView(row, new LinearLayout.LayoutParams(-1, -2));
+        row.addView(control, new LinearLayout.LayoutParams(0, -2, 1));
+        ImageButton button = icon(R.drawable.ic_help, I18n.s("help_for", title), () -> {
+            TextView body = text(null, explanation, 15, ink); body.setTextIsSelectable(true);
+            body.setPadding(dp(24), dp(12), dp(24), dp(12));
+            ScrollView scroll = new ScrollView(activity); scroll.addView(body);
+            new AlertDialog.Builder(activity).setTitle(title).setView(scroll)
+                    .setPositiveButton(I18n.s("close"), null).show();
+        });
+        row.addView(button, new LinearLayout.LayoutParams(dp(48), dp(48)));
+    }
+    void helpTitle(LinearLayout parent, String title, String explanation) {
+        help(parent, title(null, title), title, explanation);
+    }
+    void helpLabel(LinearLayout parent, String title, String explanation) {
+        help(parent, text(null, title, 13, muted), title, explanation);
+    }
+    Switch helpToggle(LinearLayout parent, String title, boolean checked, String explanation) {
+        Switch toggle = toggle(null, title, checked); help(parent, toggle, title, explanation); return toggle;
+    }
     Button button(LinearLayout parent, String label, Runnable action, boolean primary) {
         Button v = new Button(activity); v.setAllCaps(false); v.setText(label); v.setTextSize(15);
         v.setTextColor(primary ? background : accent); v.setBackgroundTintList(ColorStateList.valueOf(primary ? accent : pale));
@@ -56,7 +97,7 @@ final class Ui {
     }
     Switch toggle(LinearLayout parent, String label, boolean checked) {
         Switch v = new Switch(activity); v.setText(label); v.setTextColor(ink); v.setTextSize(14); v.setChecked(checked);
-        v.setPadding(0, dp(10), 0, dp(10)); parent.addView(v); return v;
+        v.setPadding(0, dp(10), 0, dp(10)); if (parent != null) parent.addView(v); return v;
     }
     void equal(LinearLayout row, View view) { row.addView(view, new LinearLayout.LayoutParams(0, -2, 1)); }
     void toast(String text) { Toast.makeText(activity, I18n.tr(text), Toast.LENGTH_LONG).show(); }

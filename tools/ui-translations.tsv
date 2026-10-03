@@ -259,3 +259,9 @@ cloud_delete_checking	Перевірка назви й розміру файла
 cloud_delete_removing	Видалення з хмари…	Deleting from cloud…	Usuwanie z chmury…
 cloud_delete_head	Сервер не підтримує перевірку метаданих HEAD. Швидке видалення недоступне; файл залишено.	The server does not support HEAD metadata checks. Fast deletion is unavailable; the file was kept.	Serwer nie obsługuje sprawdzania metadanych HEAD. Szybkie usuwanie jest niedostępne; plik pozostawiono.
 cloud_delete_size	Сервер не повідомив розмір файла. Видалення не виконано; перевірте WebDAV-сервер.	The server did not report the file size. Deletion was not performed; check the WebDAV server.	Serwer nie podał rozmiaru pliku. Nie usunięto go; sprawdź serwer WebDAV.
+help_for	Довідка: %s	Help: %s	Pomoc: %s
+wave_bookmarks	Закладки: %d · торкнися прапорця для переходу	Bookmarks: %d · tap a flag to jump	Zakładki: %d · dotknij znacznika, aby przejść
+cloud_upload_help	Передача записів	Recording uploads	Przesyłanie nagrań
+cloud_test_help	Перевірка підключення	Connection test	Test połączenia
+cloud_upload_hint	Після передачі файл читається назад і звіряється SHA-256. Це додає вхідний трафік приблизно в розмір запису. Непередані файли захищені від очищення навіть після вимкнення передачі.	After upload, the file is read back and SHA-256 is checked. This adds incoming traffic roughly equal to the recording size. Unverified files stay protected even if uploads are disabled.	Po przesłaniu plik jest ponownie odczytywany i sprawdzany przez SHA-256. Dodaje to ruch przychodzący zbliżony do rozmiaru nagrania. Niezweryfikowane pliki pozostają chronione także po wyłączeniu przesyłania.
+cloud_test_hint	Перевірка створює, читає й видаляє маленький тестовий файл у вибраній папці.	The test creates, reads and deletes a small test file in the selected folder.	Test tworzy, odczytuje i usuwa mały plik testowy w wybranym folderze.

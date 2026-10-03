@@ -270,6 +270,12 @@ public final class I18n {
         UI.put("cloud_delete_removing", new String[]{"Видалення з хмари…", "Deleting from cloud…", "Usuwanie z chmury…"});
         UI.put("cloud_delete_head", new String[]{"Сервер не підтримує перевірку метаданих HEAD. Швидке видалення недоступне; файл залишено.", "The server does not support HEAD metadata checks. Fast deletion is unavailable; the file was kept.", "Serwer nie obsługuje sprawdzania metadanych HEAD. Szybkie usuwanie jest niedostępne; plik pozostawiono."});
         UI.put("cloud_delete_size", new String[]{"Сервер не повідомив розмір файла. Видалення не виконано; перевірте WebDAV-сервер.", "The server did not report the file size. Deletion was not performed; check the WebDAV server.", "Serwer nie podał rozmiaru pliku. Nie usunięto go; sprawdź serwer WebDAV."});
+        UI.put("help_for", new String[]{"Довідка: %s", "Help: %s", "Pomoc: %s"});
+        UI.put("wave_bookmarks", new String[]{"Закладки: %d · торкнися прапорця для переходу", "Bookmarks: %d · tap a flag to jump", "Zakładki: %d · dotknij znacznika, aby przejść"});
+        UI.put("cloud_upload_help", new String[]{"Передача записів", "Recording uploads", "Przesyłanie nagrań"});
+        UI.put("cloud_test_help", new String[]{"Перевірка підключення", "Connection test", "Test połączenia"});
+        UI.put("cloud_upload_hint", new String[]{"Після передачі файл читається назад і звіряється SHA-256. Це додає вхідний трафік приблизно в розмір запису. Непередані файли захищені від очищення навіть після вимкнення передачі.", "After upload, the file is read back and SHA-256 is checked. This adds incoming traffic roughly equal to the recording size. Unverified files stay protected even if uploads are disabled.", "Po przesłaniu plik jest ponownie odczytywany i sprawdzany przez SHA-256. Dodaje to ruch przychodzący zbliżony do rozmiaru nagrania. Niezweryfikowane pliki pozostają chronione także po wyłączeniu przesyłania."});
+        UI.put("cloud_test_hint", new String[]{"Перевірка створює, читає й видаляє маленький тестовий файл у вибраній папці.", "The test creates, reads and deletes a small test file in the selected folder.", "Test tworzy, odczytuje i usuwa mały plik testowy w wybranym folderze."});
         STATUS.add(new String[]{"\nЗа останньою перевіркою в черзі: ", "\nQueued at last check: ", "\nW kolejce podczas ostatniej kontroli: "});
         STATUS.add(new String[]{"\nОстанній підтверджений: ", "\nLast verified: ", "\nOstatni zweryfikowany: "});
         STATUS.add(new String[]{" байтів)", " bytes)", " bajtów)"});

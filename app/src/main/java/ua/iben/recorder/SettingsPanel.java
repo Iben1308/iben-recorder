@@ -67,7 +67,7 @@ final class SettingsPanel {
         Spinner theme = ui.spinner(look, new String[]{I18n.s("system"), I18n.s("light"), I18n.s("dark")}, config.theme());
         theme.setOnItemSelectedListener(selection(p -> { if (p != config.theme()) { config.theme(p); activity.recreate(); } }));
 
-        LinearLayout audio = ui.card(pages[1]); ui.title(audio, I18n.s("record_settings"));
+        LinearLayout audio = ui.card(pages[1]); ui.helpTitle(audio, I18n.s("record_settings"), I18n.s("settings_stop_hint"));
         minutes = number(audio, I18n.s("segment_minutes"), draft == null ? String.valueOf(config.minutes()) : draft.getString("draft_minutes", String.valueOf(config.minutes())));
         quota = number(audio, I18n.s("quota_mib"), draft == null ? String.valueOf(config.quotaMiB()) : draft.getString("draft_quota", String.valueOf(config.quotaMiB())));
         String[] bitrates = {"64", "96", "128", "192", "256"};
@@ -75,7 +75,7 @@ final class SettingsPanel {
         bitrate = ui.spinner(audio, bitrates, draft == null ? find(bitrates, String.valueOf(config.bitrate())) : draft.getInt("draft_bitrate", 2));
         ui.text(audio, I18n.s("sample_rate"), 13, ui.muted);
         rate = ui.spinner(audio, new String[]{"44100", "48000"}, draft == null ? (config.sampleRate() == 48000 ? 1 : 0) : draft.getInt("draft_rate", 0));
-        ui.text(audio, I18n.s("input_device"), 13, ui.muted);
+        ui.helpLabel(audio, I18n.s("input_device"), I18n.s("input_hint"));
         device = ui.spinner(audio, new String[]{I18n.s("input_auto")}, 0);
         refillInputs(draft == null ? config.input() : draft.getString("draft_input", config.input()));
         Button detect = ui.button(audio, I18n.s("refresh_inputs"), () -> refillInputs(selectedInput()), false);
@@ -87,15 +87,13 @@ final class SettingsPanel {
         if (AudioInputs.rawSupported(activity)) addSource(sourceLabels, MediaRecorder.AudioSource.UNPROCESSED, "source_raw");
         int wantedSource = draft == null ? config.source() : draft.getInt("draft_source", config.source());
         source = ui.spinner(audio, sourceLabels.toArray(new String[0]), Math.max(0, sourceIds.indexOf(wantedSource)));
-        ui.text(audio, I18n.s("input_hint"), 12, ui.muted);
-        cleanup = ui.toggle(audio, I18n.s("cleanup"), draft == null ? config.deleteOldest() : draft.getBoolean("draft_cleanup", config.deleteOldest()));
-        ui.text(audio, I18n.s("cleanup_hint"), 12, ui.muted);
+        cleanup = ui.helpToggle(audio, I18n.s("cleanup"), draft == null ? config.deleteOldest() : draft.getBoolean("draft_cleanup", config.deleteOldest()), I18n.s("cleanup_hint"));
         boot = ui.toggle(audio, I18n.s(Platform.armedService() ? "boot_remind" : "restore_manual"), draft == null ? config.resumeAtBoot() : draft.getBoolean("draft_boot", config.resumeAtBoot()));
         Button save = ui.button(audio, I18n.s("save_record_settings"), this::saveSettings, true);
         for (View control : new View[]{minutes, quota, bitrate, rate, source, device, detect, cleanup, boot, save}) recordingControls.add(control);
-        ui.text(audio, I18n.s("settings_stop_hint"), 12, ui.muted);
 
-        LinearLayout schedule = ui.card(pages[2]); ui.title(schedule, I18n.s("weekly_schedule"));
+        LinearLayout schedule = ui.card(pages[2]); ui.helpTitle(schedule, I18n.s("weekly_schedule"), I18n.s("schedule_toggle_hint") + "\n\n"
+                + I18n.s("schedule_hint") + (Platform.armedService() ? "\n\n" + I18n.s("standby_hint") : ""));
         scheduleStatus = ui.text(schedule, "", 13, ui.accent);
         scheduleToggle = ui.button(schedule, "", () -> {
             if (scheduleArmed()) { ScheduleManager.pauseSchedule(activity); refresh(); }
@@ -103,7 +101,6 @@ final class SettingsPanel {
                 if (saveSchedule(true)) { ScheduleManager.activateSchedule(activity); refresh(); }
             });
         }, true);
-        ui.text(schedule, I18n.s("schedule_toggle_hint"), 12, ui.muted);
         WeeklySchedule.Day[] existing = config.days();
         for (int i = 0; i < 7; i++) {
             final int day = i;
@@ -115,8 +112,6 @@ final class SettingsPanel {
             toButtons[i] = ui.button(null, "", () -> time(day, true), false);
             ui.equal(times, fromButtons[i]); ui.equal(times, toButtons[i]); updateTime(day);
         }
-        ui.text(schedule, I18n.s("schedule_hint"), 12, ui.muted);
-        if (Platform.armedService()) ui.text(schedule, I18n.s("standby_hint"), 12, ui.muted);
         if (android.os.Build.VERSION.SDK_INT >= 31) ui.button(schedule, I18n.s("allow_alarms"), () -> {
             try { Platform.requestAlarms(activity); } catch (RuntimeException e) { ui.toast(I18n.s("alarm_required")); }
         }, false);
@@ -125,7 +120,7 @@ final class SettingsPanel {
         }, false);
         ui.button(schedule, I18n.s("save_schedule"), () -> saveSchedule(false), false);
 
-        LinearLayout playback = ui.card(pages[1]); ui.title(playback, I18n.s("silence"));
+        LinearLayout playback = ui.card(pages[1]); ui.helpTitle(playback, I18n.s("silence"), I18n.s("silence_hint"));
         TextView silence = ui.text(playback, I18n.s("silence_threshold", config.silenceDb()), 14, ui.ink);
         SeekBar threshold = new SeekBar(activity); threshold.setMax(40); threshold.setProgress(config.silenceDb() + 60); playback.addView(threshold);
         threshold.setContentDescription(I18n.s("silence"));
@@ -137,9 +132,10 @@ final class SettingsPanel {
             @Override public void onStartTrackingTouch(SeekBar b) { }
             @Override public void onStopTrackingTouch(SeekBar b) { }
         });
-        ui.text(playback, I18n.s("silence_hint"), 12, ui.muted);
 
-        LinearLayout storage = ui.card(pages[3]); ui.title(storage, "WebDAV · WebDAV");
+        LinearLayout storage = ui.card(pages[3]); ui.helpTitle(storage, I18n.s("webdav_title"),
+                I18n.s("webdav_intro") + "\n\n" + I18n.s("webdav_nextcloud_recommend")
+                + (!Platform.publicStorage() ? "\n\n" + I18n.s("private_storage_hint") : ""));
         cloudStatus = ui.text(storage, "", 13, ui.muted);
         ui.button(storage, I18n.s("cloud_connection"), () -> activity.startActivity(new Intent(activity, CloudActivity.class)), true);
         ui.text(storage, RecordingFiles.outputDirectory(activity).getAbsolutePath(), 12, ui.muted).setTextIsSelectable(true);
@@ -148,17 +144,15 @@ final class SettingsPanel {
             ui.toast(I18n.s("copied"));
         }, false);
         if (!Platform.publicStorage()) {
-            ui.text(storage, I18n.s("private_storage_hint"), 12, ui.muted);
-            ui.button(storage, I18n.s("restore_folder"), activity::restoreFolder, false);
-            ui.text(storage, I18n.s("restore_hint"), 12, ui.muted);
+            ui.help(storage, ui.button(null, I18n.s("restore_folder"), activity::restoreFolder, false),
+                    I18n.s("restore_folder"), I18n.s("restore_hint"));
         }
-        LinearLayout notices = ui.card(pages[0]); ui.title(notices, I18n.s("notifications"));
+        LinearLayout notices = ui.card(pages[0]); ui.helpTitle(notices, I18n.s("notifications"), I18n.s("problem_alerts_hint"));
         Switch alerts = ui.toggle(notices, I18n.s("problem_alerts"), ProblemNotifications.enabled(activity));
         alerts.setOnCheckedChangeListener((button, enabled) -> {
             config.prefs.edit().putBoolean("problem_alerts", enabled).apply();
             if (enabled) activity.notificationPermission(() -> { }); else ProblemNotifications.reset(activity);
         });
-        ui.text(notices, I18n.s("problem_alerts_hint"), 12, ui.muted);
         ui.button(notices, I18n.s("allow_notifications"), () -> {
             try { Platform.notificationSettings(activity); } catch (RuntimeException e) { ui.toast(I18n.s("notification_required")); }
         }, false);
@@ -173,7 +167,7 @@ final class SettingsPanel {
             ScrollView scroll = new ScrollView(activity); scroll.addView(text);
             new AlertDialog.Builder(activity).setTitle(I18n.s("log")).setView(scroll).setPositiveButton(I18n.s("close"), null).show();
         }, false);
-        ui.text(system, "Iben Recorder · 0.7.1 · Android 8.1+", 12, ui.muted);
+        ui.text(system, "Iben Recorder · 0.7.2 · Android 8.1+", 12, ui.muted);
         showSection(draft == null ? config.prefs.getInt("settings_section", 0) : draft.getInt("draft_section", 0)); refresh();
     }
     private interface Selected { void value(int position); }

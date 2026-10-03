@@ -17,6 +17,7 @@ import android.widget.TextView;
 
 public final class CloudActivity extends Activity {
     private CloudSettings cloud;
+    private Ui ui;
     private LinearLayout root;
     private EditText address, user, password;
     private Switch enabled, unmetered, localHttp;
@@ -34,17 +35,18 @@ public final class CloudActivity extends Activity {
     @Override protected void attachBaseContext(android.content.Context base) { super.attachBaseContext(LocaleContext.wrap(base)); }
     @Override public void onCreate(Bundle state) {
         Config config = new Config(this);
+        ui = new Ui(this, config);
         boolean dark = config.theme() == 2 || (config.theme() == 0
                 && (getResources().getConfiguration().uiMode & Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES);
         setTheme(dark ? R.style.AppTheme_Dark : R.style.AppTheme_Light);
         super.onCreate(state);
-        foreground = Color.parseColor(dark ? "#E5ECE9" : "#212F2D");
+        foreground = ui.ink;
         cloud = new CloudSettings(this);
         ScrollView scroll = new ScrollView(this);
         root = new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL);
+        root.setBackgroundColor(ui.background);
         root.setPadding(dp(22), dp(22), dp(22), dp(30)); scroll.addView(root); setContentView(scroll); Platform.insets(this, scroll, dark);
-        text(I18n.s("webdav_title"), 26);
-        text(I18n.s("webdav_intro"), 14);
+        ui.helpTitle(root, I18n.s("webdav_title"), I18n.s("webdav_intro") + "\n\n" + I18n.s("webdav_nextcloud_recommend"));
         status = text("", 15);
         address = input(I18n.s("webdav_address"), state==null ? cloud.folder() : state.getString("draft_folder",cloud.folder()), InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI);
         address.setHint("https://server.example.com/recordings/");
@@ -53,10 +55,8 @@ public final class CloudActivity extends Activity {
         password.setSaveEnabled(false);
         password.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO);
         password.setHint(cloud.hasSecret() ? I18n.tr("Збережено — порожнє поле залишає пароль") : I18n.s("webdav_password_hint"));
-        text(I18n.s("webdav_folder_hint"),13);
-        text(I18n.s("webdav_nextcloud_recommend"),13);
         localHttp=toggle(I18n.s("http_allow"),state==null ? cloud.localHttp() : state.getBoolean("draft_http",false));
-        text(I18n.s("http_warning"),13);
+        explain(localHttp, I18n.s("http_allow"), I18n.s("http_warning"));
         httpConfirmed=localHttp.isChecked();
         localHttp.setOnCheckedChangeListener((button,checked) -> {
             if(!checked)httpConfirmed=false;
@@ -80,11 +80,11 @@ public final class CloudActivity extends Activity {
         };
         address.addTextChangedListener(changed);user.addTextChangedListener(changed);
         enabled = toggle("Автоматично передавати готові записи", state==null ? cloud.enabled() : state.getBoolean("draft_enabled",cloud.enabled()));
+        explain(enabled, I18n.s("cloud_upload_help"), I18n.s("cloud_upload_hint"));
         unmetered = toggle("Лише мережа без тарифікації (зазвичай Wi-Fi)", state==null ? cloud.unmetered() : state.getBoolean("draft_wifi",cloud.unmetered()));
-        text("Після передачі файл читається назад і звіряється SHA-256. Це додає вхідний трафік приблизно в розмір запису. Непередані файли захищені від очищення навіть після вимкнення передачі.", 13);
         save = button("Зберегти підключення", this::save);
         test = button("Перевірити підключення", this::test);
-        text("Перевірка створює, читає й видаляє маленький тестовий файл у вибраній папці.", 13);
+        explain(test, I18n.s("cloud_test_help"), I18n.s("cloud_test_hint"));
         testStatus = text("", 14);
         now = button("Синхронізувати зараз", () -> {
             if (!cloud.enabled()) { testStatus.setText(I18n.tr("Увімкни автопередачу й збережи підключення")); return; }
@@ -222,7 +222,9 @@ public final class CloudActivity extends Activity {
         view.setPadding(0, dp(6), 0, dp(8)); root.addView(view); return view;
     }
     private EditText input(String label, String value, int type) {
-        text(label, 14); EditText view = new EditText(this); view.setSingleLine(true); view.setInputType(type);
+        if (label.equals(I18n.s("webdav_address"))) ui.helpLabel(root, label, I18n.s("webdav_folder_hint"));
+        else text(label, 14);
+        EditText view = new EditText(this); view.setSingleLine(true); view.setInputType(type);
         view.setText(value); root.addView(view); return view;
     }
     private Switch toggle(String label, boolean value) {
@@ -232,6 +234,9 @@ public final class CloudActivity extends Activity {
     private Button button(String label, Runnable action) {
         Button view = new Button(this); view.setAllCaps(false); view.setText(I18n.tr(label)); view.setOnClickListener(v -> action.run());
         root.addView(view, new LinearLayout.LayoutParams(-1, -2)); return view;
+    }
+    private void explain(View control, String title, String description) {
+        root.removeView(control); ui.help(root, control, title, description);
     }
     private int dp(int value) { return Math.round(value * getResources().getDisplayMetrics().density); }
 }
