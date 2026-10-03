@@ -446,17 +446,17 @@ final class ListenPanel {
         if (selected != null && selected.id.equals(item.id)) releasePlayer();
         updateMark(); play.setEnabled(false);
         deletionDialog = new AlertDialog.Builder(activity).setTitle(I18n.s(both ? "delete_both" : "delete_cloud"))
-                .setMessage(I18n.s("cloud_delete_progress", 0))
+                .setMessage(I18n.s("cloud_delete_progress", I18n.s("cloud_delete_checking")))
                 .setNegativeButton(I18n.s("cancel"), (dialog, which) -> { if (cloudDeletion != null) cloudDeletion.cancel(); })
                 .setOnCancelListener(dialog -> { if (cloudDeletion != null) cloudDeletion.cancel(); }).create();
         deletionDialog.setCanceledOnTouchOutside(false); deletionDialog.show();
         cloudDeletion = new CloudDeletionTask(app, item, both,allowImportant, new CloudDeletionTask.Listener() {
-            private int lastPercent = -1;
-            @Override public void progress(int percent) {
-                if (percent == lastPercent) return;
-                lastPercent = percent;
+            private String lastPhase = "";
+            @Override public void progress(String phase) {
+                if (phase.equals(lastPhase)) return;
+                lastPhase = phase;
                 activity.runOnUiThread(() -> {
-                    if (!gone && deletionDialog != null) deletionDialog.setMessage(I18n.s("cloud_delete_progress", percent));
+                    if (!gone && deletionDialog != null) deletionDialog.setMessage(I18n.s("cloud_delete_progress", phase));
                 });
             }
             @Override public void finished(boolean remoteDone, LocalDeletion.Result local, String error) {

@@ -318,14 +318,14 @@ final class RecordingFiles implements AutoCloseable {
         }
     }
     static final class CloudDelete implements AutoCloseable {
-        final String id, target, remoteName, hash;
+        final String id, target, remoteName;
         final long size;
         final Lease lease;
         final boolean allowImportant;
         CloudDelete(RecordIndex.Entry entry, String target, Lease lease, boolean allowImportant) {
             this.allowImportant=allowImportant;
             id=entry.id; this.target=target; remoteName=entry.remoteName == null ? entry.finalName : entry.remoteName;
-            size=entry.verifiedSize; hash=entry.verifiedHash; this.lease=lease;
+            size=entry.verifiedSize; this.lease=lease;
         }
         @Override public void close() { lease.close(); }
     }

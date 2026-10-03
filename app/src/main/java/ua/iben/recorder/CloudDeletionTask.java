@@ -7,7 +7,7 @@ import java.io.InterruptedIOException;
 /** An explicit foreground UI operation. No periodic worker or automatic DELETE retry. */
 final class CloudDeletionTask {
     interface Listener {
-        void progress(int percent);
+        void progress(String phase);
         void finished(boolean remoteDone, LocalDeletion.Result local, String error);
     }
     private final Context app;
@@ -42,11 +42,11 @@ final class CloudDeletionTask {
                     RecordingFiles.CloudDelete deletion = files.prepareCloudDelete(item, connection.target.key,allowImportant);
                     DavClient client = connection.client( (phase, done, total) -> {
                         if (cloud.revision() != connection.revision) cancel();
-                        listener.progress((int)Math.min(100, done * 100 / Math.max(1, total)));
+                        listener.progress(I18n.tr(phase));
                     })) {
                 active = client;
                 if (canceled) client.cancel();
-                client.deleteRecording(deletion.remoteName, deletion.size, deletion.hash,
+                client.deleteRecording(deletion.remoteName, deletion.size,
                         () -> !canceled && cloud.revision() == connection.revision && files.cloudDeletionAllowed(deletion));
                 remoteDone = true;
                 // Record a confirmed response even if UI cancellation arrived just after it.

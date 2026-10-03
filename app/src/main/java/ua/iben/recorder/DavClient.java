@@ -19,7 +19,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
-/** HTTPS WebDAV with conditional uploads and explicitly requested, content-verified deletion.
+/** WebDAV with content-verified uploads and explicitly requested, metadata-checked deletion.
  * Production connections retain system certificate/hostname checks and reject redirects.
  */
 public final class DavClient implements AutoCloseable {
@@ -91,7 +91,7 @@ public final class DavClient implements AutoCloseable {
         c.setRequestProperty("X-Requested-With", "XMLHttpRequest");
         c.setRequestProperty("Accept-Encoding", "identity");
         c.setRequestProperty("Cache-Control", "no-cache, no-store");
-        c.setRequestProperty("User-Agent", "IbenRecorder/0.7.0");
+        c.setRequestProperty("User-Agent", "IbenRecorder/0.7.1");
         // HttpsURLConnection lacks a write timeout. Bound the whole request as well.
         deadline = DEADLINES.schedule(c::disconnect, 9, TimeUnit.MINUTES);
         check();
@@ -198,27 +198,49 @@ public final class DavClient implements AutoCloseable {
         check(); unchanged(file, size, modified);
         return receipt;
     }
-    /** Only a recorded receipt authorizes this exact file. Never accepts directories or wildcards. */
-    public void deleteRecording(String remoteName, long expectedSize, String expectedHash) throws IOException {
-        deleteRecording(remoteName, expectedSize, expectedHash, () -> true);
+    /** The caller authorizes the exact saved path and size; HEAD never downloads audio.
+     * A strong current ETag protects against changes between this check and DELETE.
+     * Same-name, same-size replacements made before HEAD are intentionally not content-verified.
+     */
+    public void deleteRecording(String remoteName, long expectedSize) throws IOException {
+        deleteRecording(remoteName, expectedSize, () -> true);
     }
-    void deleteRecording(String remoteName, long expectedSize, String expectedHash, BooleanSupplier allowed) throws IOException {
-        if (remoteName == null || !remoteName.endsWith(".m4a") || expectedSize <= 0
-                || expectedHash == null || !expectedHash.matches("[0-9a-f]{64}"))
+    void deleteRecording(String remoteName, long expectedSize, BooleanSupplier allowed) throws IOException {
+        if (remoteName == null || !remoteName.endsWith(".m4a") || expectedSize <= 0)
             throw new IOException(I18n.s("cloud_delete_no_receipt"));
         if (!allowed.getAsBoolean()) throw new InterruptedIOException();
-        Receipt remote = verify(remoteName, expectedSize, 0, expectedHash);
+        progress.update(I18n.uk("cloud_delete_checking"), 0, 0);
+        String etag = deletionEtag(remoteName, expectedSize);
         check();
         if (!allowed.getAsBoolean()) throw new InterruptedIOException();
-        if (remote == null) return; // A previous DELETE may have succeeded before its response was lost.
-        if (!strongEtag(remote.etag)) throw new IOException(I18n.s("cloud_delete_etag"));
+        if (etag == null) return; // A previous DELETE may have succeeded before its response was lost.
+        progress.update(I18n.uk("cloud_delete_removing"), 0, 0);
+        check();
+        if (!allowed.getAsBoolean()) throw new InterruptedIOException();
         HttpURLConnection c = null;
         try {
             c = begin("DELETE", remoteName);
-            c.setRequestProperty("If-Match", remote.etag);
+            c.setRequestProperty("If-Match", etag);
             int code = c.getResponseCode();
             if (code == 412) throw new Conflict();
             if (code != 200 && code != 204 && code != 404) throw response(code);
+        } finally { end(c); }
+    }
+    /** Reads response headers only. No GET fallback: missing metadata cannot authorize deletion. */
+    private String deletionEtag(String name, long expectedSize) throws IOException {
+        HttpURLConnection c = null;
+        try {
+            c = begin("HEAD", name);
+            int code = c.getResponseCode();
+            if (code == 404) return null;
+            if (code == 405 || code == 501) throw new IOException(I18n.s("cloud_delete_head"));
+            if (code != 200) throw response(code);
+            long size = c.getContentLengthLong();
+            if (size < 0) throw new IOException(I18n.s("cloud_delete_size"));
+            if (size != expectedSize) throw new Conflict();
+            String etag = c.getHeaderField("ETag");
+            if (!strongEtag(etag)) throw new IOException(I18n.s("cloud_delete_etag"));
+            return etag;
         } finally { end(c); }
     }
     private static boolean strongEtag(String etag) {

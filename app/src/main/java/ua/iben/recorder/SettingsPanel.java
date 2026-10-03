@@ -173,7 +173,7 @@ final class SettingsPanel {
             ScrollView scroll = new ScrollView(activity); scroll.addView(text);
             new AlertDialog.Builder(activity).setTitle(I18n.s("log")).setView(scroll).setPositiveButton(I18n.s("close"), null).show();
         }, false);
-        ui.text(system, "Iben Recorder · 0.7.0 · Android 8.1+", 12, ui.muted);
+        ui.text(system, "Iben Recorder · 0.7.1 · Android 8.1+", 12, ui.muted);
         showSection(draft == null ? config.prefs.getInt("settings_section", 0) : draft.getInt("draft_section", 0)); refresh();
     }
     private interface Selected { void value(int position); }

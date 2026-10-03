@@ -66,7 +66,7 @@ final class BatchWork {
                                 DavClient client=connection.client((phase,done,total) -> { })) {
                             active=client;
                             if(canceled)client.cancel();
-                            client.deleteRecording(deletion.remoteName,deletion.size,deletion.hash,
+                            client.deleteRecording(deletion.remoteName,deletion.size,
                                     () -> !canceled && cloud.revision()==connection.revision && files.cloudDeletionAllowed(deletion));
                             LocalDeletion.Result local=files.cloudDeleted(deletion,item,action==Action.DELETE_BOTH && !canceled);
                             if(action==Action.DELETE_BOTH && local!=LocalDeletion.Result.DELETED && local!=LocalDeletion.Result.MISSING)

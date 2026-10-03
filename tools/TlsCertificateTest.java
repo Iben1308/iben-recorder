@@ -66,9 +66,10 @@ public final class TlsCertificateTest {
                 check(server.requests.get()==requests,"Failed pin sends no HTTP request");
                 // A failed pin must not alter subsequent trust or global HTTPS defaults.
                 try(DavClient client=new DavClient(target,"password",QUIET,imported)) {
-                    client.deleteRecording("recording.m4a",receipt.size,receipt.sha256);
+                    client.deleteRecording("recording.m4a",receipt.size);
                 }
-                check(server.files.isEmpty(),"Verified conditional deletion also works over pinned HTTPS");
+                check(server.files.isEmpty(),"Metadata-checked conditional deletion also works over pinned HTTPS");
+                check(server.requests.get()==requests+2,"Pinned HTTPS deletion uses only HEAD and DELETE");
                 check(Files.exists(source.toPath()),"Cloud operations retain the local recording");
             }
             try(Server server=new Server(wrongHost)) {
@@ -119,7 +120,13 @@ public final class TlsCertificateTest {
                     String auth="Basic "+Base64.getEncoder().encodeToString("user:password".getBytes(StandardCharsets.UTF_8));
                     if(!auth.equals(exchange.getRequestHeaders().getFirst("Authorization"))){exchange.sendResponseHeaders(401,-1);return;}
                     String path=exchange.getRequestURI().getPath(),method=exchange.getRequestMethod();
-                    if(method.equals("GET")) {
+                    if(method.equals("HEAD")) {
+                        byte[] bytes=files.get(path);
+                        if(bytes==null){exchange.sendResponseHeaders(404,-1);return;}
+                        exchange.getResponseHeaders().set("Content-Length",Integer.toString(bytes.length));
+                        exchange.getResponseHeaders().set("ETag","\"test-version\"");
+                        exchange.sendResponseHeaders(200,-1);
+                    } else if(method.equals("GET")) {
                         byte[] bytes=files.get(path);
                         if(bytes==null){exchange.sendResponseHeaders(404,-1);return;}
                         exchange.getResponseHeaders().set("ETag","\"test-version\"");
