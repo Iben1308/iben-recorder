@@ -39,4 +39,4 @@ if not (destination / 'bin/gradle').is_file():
     archive.unlink()
     (destination / 'bin/gradle').chmod(0o755)
 PY
-exec "$project_dir/.tools/gradle-8.9/bin/gradle" -p "$project_dir" :app:assembleDebug "$@"
+exec "$project_dir/.tools/gradle-8.9/bin/gradle" -p "$project_dir" ${GRADLE_TASK:-:app:assembleDebug} "$@"

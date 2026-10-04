@@ -1,5 +1,9 @@
 plugins { id 'com.android.application' }
 
+def ksFile = rootProject.file('keystore.properties')
+def ksProps = new Properties()
+if (ksFile.exists()) ksFile.withInputStream { ksProps.load(it) }
+
 android {
     namespace 'ua.iben.recorder'
     compileSdk 35
@@ -14,8 +18,21 @@ android {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
     }
+    signingConfigs {
+        release {
+            if (ksFile.exists()) {
+                storeFile file(ksProps['storeFile'])
+                storePassword ksProps['storePassword']
+                keyAlias ksProps['keyAlias']
+                keyPassword ksProps['keyPassword']
+            }
+        }
+    }
     buildTypes {
-        release { minifyEnabled false }
+        release {
+            minifyEnabled false
+            if (ksFile.exists()) signingConfig signingConfigs.release
+        }
     }
 }
 
