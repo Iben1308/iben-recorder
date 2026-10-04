@@ -17,6 +17,12 @@ java --module jdk.compiler/com.sun.tools.javac.Main --release 8 -d "$classes_dir
   "$project_dir/app/src/main/java/ua/iben/recorder/SegmentTimeline.java" \
   "$project_dir/app/src/main/java/ua/iben/recorder/DavTarget.java" \
   "$project_dir/app/src/main/java/ua/iben/recorder/DavClient.java" \
+  "$project_dir/app/src/main/java/ua/iben/recorder/DavListing.java" \
+  "$project_dir/app/src/main/java/ua/iben/recorder/DavFolderTransport.java" \
+  "$project_dir/app/src/main/java/ua/iben/recorder/FileUseRegistry.java" \
+  "$project_dir/app/src/main/java/ua/iben/recorder/CloudAudioSource.java" \
+  "$project_dir/tools/stubs/android/media/MediaDataSource.java" \
+  "$project_dir/tools/CloudPlaybackTest.java" \
   "$project_dir/app/src/main/java/ua/iben/recorder/TlsCertificate.java" \
   "$project_dir/app/src/main/java/ua/iben/recorder/RecordingPosition.java" \
   "$project_dir/tools/LibraryFeaturesTest.java" \
@@ -42,6 +48,7 @@ java -cp "$classes_dir" ua.iben.recorder.StoragePolicyTest
 java -cp "$classes_dir" ua.iben.recorder.AudioCoreTest
 java -cp "$classes_dir" ua.iben.recorder.CaptureRecoveryTest
 java --add-modules jdk.httpserver -cp "$classes_dir" ua.iben.recorder.WebDavTest
+java --add-modules jdk.httpserver -cp "$classes_dir" ua.iben.recorder.CloudPlaybackTest
 java -cp "$classes_dir" ua.iben.recorder.FeaturesTest
 java -cp "$classes_dir" ua.iben.recorder.CompatibilityTest
 java -cp "$classes_dir" ua.iben.recorder.WorkflowTest
@@ -75,7 +82,10 @@ assert recorder.get(ns+'foregroundServiceType') == 'microphone'
 wave = next(s for s in manifest.find('application').findall('service') if s.get(ns+'name').endswith('WaveformService'))
 assert wave.get(ns+'foregroundServiceType') == 'dataSync|mediaProcessing'
 assert wave.get(ns+'exported') == 'false' and wave.get(ns+'stopWithTask') == 'false'
-for permission in ['FOREGROUND_SERVICE_DATA_SYNC','FOREGROUND_SERVICE_MEDIA_PROCESSING']:
+for name,kind in [('PlaybackService','mediaPlayback'),('OperationsService','dataSync')]:
+    item=next(s for s in manifest.find('application').findall('service') if s.get(ns+'name').endswith(name))
+    assert item.get(ns+'foregroundServiceType')==kind and item.get(ns+'exported')=='false' and item.get(ns+'stopWithTask')=='false'
+for permission in ['FOREGROUND_SERVICE_DATA_SYNC','FOREGROUND_SERVICE_MEDIA_PROCESSING','FOREGROUND_SERVICE_MEDIA_PLAYBACK']:
     assert 'android.permission.'+permission in permissions
 gradle=(root/'app/build.gradle').read_text()
 assert re.search(r'minSdk\s+27', gradle) and re.search(r'targetSdk\s+35', gradle)

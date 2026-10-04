@@ -29,29 +29,21 @@ final class RecordingFiles implements AutoCloseable {
     private final RecordIndex index;
     // Shared by recording, upload, and settings instances in this process.
     static final Object LOCK = new Object();
-    private static final Map<String, Integer> READERS = new HashMap<>();
+    private static final FileUseRegistry ACCESS=new FileUseRegistry();
     static final class Lease implements AutoCloseable {
-        final File file;
-        private boolean closed;
-        Lease(File file) { this.file = file; }
-        @Override public void close() {
-            synchronized (LOCK) {
-                if (closed) return;
-                closed = true;
-                String key = file.getAbsolutePath();
-                int count = READERS.getOrDefault(key, 1) - 1;
-                if (count == 0) READERS.remove(key); else READERS.put(key, count);
-            }
-        }
+        final File file;private final FileUseRegistry.Use use;
+        Lease(File file,FileUseRegistry.Use use){this.file=file;this.use=use;}
+        @Override public void close(){use.close();}
     }
-    static Lease lease(File file) throws IOException {
-        synchronized (LOCK) {
-            if (!file.isFile()) throw new IOException("Локальний запис уже недоступний");
-            String key = file.getAbsolutePath();
-            READERS.put(key, READERS.getOrDefault(key, 0) + 1);
-            return new Lease(file);
-        }
+    static Lease lease(File file) throws IOException {return lease(file,null);}
+    static Lease lease(File file,Runnable cancel) throws IOException {
+        synchronized(LOCK){if(!file.isFile())throw new IOException(I18n.s("unavailable"));return new Lease(file,ACCESS.acquire(file.getAbsolutePath(),cancel));}
     }
+    static Lease hold(Item item,Runnable cancel) throws IOException {
+        synchronized(LOCK){if(item.local && !item.file.isFile())throw new IOException(I18n.s("unavailable"));return new Lease(item.file,ACCESS.acquire(item.file.getAbsolutePath(),cancel));}
+    }
+    static boolean busy(Item item){return ACCESS.busy(item.file.getAbsolutePath());}
+    static FileUseRegistry.Reservation reserve(Item item) throws IOException {return ACCESS.reserve(item.file.getAbsolutePath());}
     final File pendingDir;
     final File readyDir;
     private final File legacyDir;
@@ -197,7 +189,7 @@ final class RecordingFiles implements AutoCloseable {
                 File f = new File(path);
                 if (!f.delete()) throw new IOException("Не вдалося видалити старий фрагмент");
                 String id = s.rowIds.get(path);
-                if (id != null) index.remove(id);
+                if (id != null) index.localRemoved(id);
                 scan(f);
                 AppLog.write(context, "Ліміт пам’яті: видалено " + f.getName());
             }
@@ -221,7 +213,7 @@ final class RecordingFiles implements AutoCloseable {
             File f = e.state == RecordIndex.PUBLISHED ? published(e.finalName) : temp(e.id);
             if (e.state == RecordIndex.PUBLISHED || e.state == RecordIndex.FAILED) {
                 if (f.isFile()) {
-                    if (e.state == RecordIndex.PUBLISHED && !e.important && isVerified(e, f, target) && !READERS.containsKey(f.getAbsolutePath())) s.add(f, e.id);
+                    if (e.state == RecordIndex.PUBLISHED && !e.important && isVerified(e, f, target) && !ACCESS.busy(f.getAbsolutePath()) && !ACCESS.reserved(f.getAbsolutePath())) s.add(f, e.id);
                     else s.pending += f.length();
                 }
                 // Keep inaccessible published rows; absence is not proof of deletion.
@@ -245,7 +237,10 @@ final class RecordingFiles implements AutoCloseable {
         return s;
     }
     private boolean isVerified(RecordIndex.Entry entry, File file, String target) {
-        return !entry.cloudDeletes.containsKey(target) && TransferPolicy.confirmed(target, entry.verifiedTarget, file.length(), entry.verifiedSize,
+        RecordIndex.CloudCopy copy=entry.cloudCopies.get(target);
+        return copy!=null && copy.present && copy.size==file.length()
+                && (entry.verifiedEtag==null || copy.etag==null || entry.verifiedEtag.equals(copy.etag))
+                && !entry.cloudDeletes.containsKey(target) && TransferPolicy.confirmed(target, entry.verifiedTarget, file.length(), entry.verifiedSize,
                 file.lastModified(), entry.verifiedModified, entry.verifiedHash, entry.receiptKind, entry.verifiedEtag);
     }
     static final class Upload {
@@ -262,35 +257,62 @@ final class RecordingFiles implements AutoCloseable {
         }
     }
     static final class Item {
-        final String id, name;
-        final File file;
-        final long start, duration, bytes, modified;
-        final boolean uploaded;
-        final int receiptKind;
-        final String cloudTarget;
-        final int cloudDeleteState;
-        long position;
-        boolean listened;
-        boolean important;
-        String heardRanges;
-        Item(RecordIndex.Entry e, File f, boolean uploaded, String target) {
-            id = e.id; name = e.finalName; file = f; start = e.start; duration = e.duration;
-            bytes = f.length(); modified = f.lastModified(); this.uploaded = uploaded;receiptKind=e.receiptKind;
-            cloudTarget = target;
-            cloudDeleteState = !e.cloudDeletes.containsKey(target) ? 0 : e.cloudDeletes.get(target) ? 2 : 1;
+        final String id,name;final File file;
+        final long start,duration,bytes,modified,cloudSize;
+        final boolean uploaded,local,hasCloud;final int receiptKind;
+        final String cloudTarget,remoteName,cloudEtag;final int cloudDeleteState;
+        long position;boolean listened,important;String heardRanges;
+        Item(RecordIndex.Entry e,File f,boolean uploaded,String target) {
+            id=e.id;file=f;local=f.isFile();start=e.start;duration=e.duration;
+            RecordIndex.CloudCopy copy=e.cloudCopies.get(target);hasCloud=copy!=null && copy.present;
+            remoteName=copy!=null?copy.name:e.remoteName==null?e.finalName:e.remoteName;
+            cloudSize=copy==null?e.verifiedSize:copy.size;cloudEtag=copy==null?null:copy.etag;
+            name=local?e.finalName:remoteName;bytes=local?f.length():Math.max(0,cloudSize);modified=local?f.lastModified():copy==null?0:copy.modified;
+            this.uploaded=uploaded;receiptKind=e.receiptKind;cloudTarget=target;
+            cloudDeleteState=!e.cloudDeletes.containsKey(target)?0:e.cloudDeletes.get(target)?2:1;
             position=PlaybackProgress.resume(e.position,duration);listened=e.listened;heardRanges=e.heardRanges;important=e.important;
         }
     }
     List<Item> recordings() throws IOException {
-        synchronized (LOCK) {
-            List<Item> result = new ArrayList<>();
-            String target = new CloudSettings(context).targetKey();
-            for (RecordIndex.Entry e : index.all()) if (e.state == RecordIndex.PUBLISHED) {
-                File f = published(e.finalName);
-                if (f.isFile()) result.add(new Item(e, f, isVerified(e, f, target), target));
+        synchronized(LOCK){
+            List<Item> result=new ArrayList<>();String target=new CloudSettings(context).targetKey();
+            for(RecordIndex.Entry e:index.all())if(e.state==RecordIndex.PUBLISHED){
+                File file=published(e.finalName);RecordIndex.CloudCopy copy=e.cloudCopies.get(target);
+                if(file.isFile() || copy!=null && copy.present)result.add(new Item(e,file,isVerified(e,file,target),target));
             }
-            java.util.Collections.reverse(result);
-            return result;
+            java.util.Collections.reverse(result);return result;
+        }
+    }
+    Item find(String id) throws IOException {for(Item item:recordings())if(item.id.equals(id))return item;return null;}
+    void cloudCatalog(String target,List<DavListing.Remote> remote,long started) throws IOException {
+        synchronized(LOCK){
+            if(!target.equals(new CloudSettings(context).targetKey()))throw new IOException(I18n.s("connection_changed"));
+            List<RecordIndex.Entry> old=index.all();Map<String,RecordIndex.Entry> byRemote=new HashMap<>();
+            for(RecordIndex.Entry entry:old){RecordIndex.CloudCopy copy=entry.cloudCopies.get(target);if(copy!=null)byRemote.put(copy.name,entry);}
+            android.database.sqlite.SQLiteDatabase db=index.getWritableDatabase();db.beginTransaction();
+            try{
+                index.cloudMissing(target,started);
+                for(DavListing.Remote file:remote){
+                    RecordIndex.Entry entry=byRemote.get(file.name);
+                    if(entry!=null && entry.cloudCopies.get(target).seen>started)continue; // A newer upload wins over an older catalogue snapshot.
+                    if(entry==null)for(RecordIndex.Entry candidate:old){
+                        if(candidate.state==RecordIndex.PUBLISHED && file.name.equals(candidate.finalName)){
+                            File local=published(candidate.finalName);
+                            if(local.isFile() && local.length()==file.size && !candidate.cloudCopies.containsKey(target)){entry=candidate;break;}
+                        }
+                    }
+                    String id;
+                    if(entry!=null)id=entry.id;
+                    else {
+                        long[] timing=DavListing.timing(file.name,file.modified);id=UUID.randomUUID().toString();
+                        String zone=java.util.TimeZone.getDefault().getID(),alias;int duplicate=0;
+                        do{alias=RecordingNames.format(timing[0],zone,timing[1],duplicate++);}while(index.nameReserved(alias,id) || published(alias).exists());
+                        index.create(id,timing[0],zone);index.prepared(id,timing[1],alias);index.state(id,RecordIndex.PUBLISHED);
+                    }
+                    index.cloudKnown(id,target,file.name,file.size,file.etag,file.modified,started);
+                }
+                db.setTransactionSuccessful();
+            }finally{db.endTransaction();}
         }
     }
     /** Only the explicitly confirmed, unchanged closed recording can be removed. No WebDAV DELETE. */
@@ -303,13 +325,14 @@ final class RecordingFiles implements AutoCloseable {
             if (entry.state != RecordIndex.PUBLISHED) return LocalDeletion.Result.NOT_READY;
             if (entry.important && !allowImportant) return LocalDeletion.Result.PROTECTED;
             File file = published(entry.finalName);
+            if (!expected.local) return LocalDeletion.Result.MISSING;
             if (!entry.finalName.equals(expected.name) || !file.getCanonicalFile().equals(expected.file.getCanonicalFile()))
                 return LocalDeletion.Result.CHANGED;
             LocalDeletion.Result result = LocalDeletion.remove(file, expected.bytes, expected.modified, true,
-                    READERS.containsKey(file.getAbsolutePath()),
+                    ACCESS.busy(file.getAbsolutePath()),
                     isVerified(entry, file, new CloudSettings(context).targetKey()), allowUnverified,entry.important,allowImportant);
             if (result == LocalDeletion.Result.DELETED) {
-                index.remove(entry.id);
+                index.localRemoved(entry.id);
                 if (entry.id.equals(config.prefs.getString("last_recording", ""))) config.prefs.edit().remove("last_recording").apply();
                 WaveformAnalyzer.forget(context, file, expected.bytes, expected.modified);
                 scan(file);
@@ -319,39 +342,23 @@ final class RecordingFiles implements AutoCloseable {
         }
     }
     static final class CloudDelete implements AutoCloseable {
-        final String id, target, remoteName;
-        final long size;
-        final Lease lease;
-        final boolean allowImportant;
-        CloudDelete(RecordIndex.Entry entry, String target, Lease lease, boolean allowImportant) {
-            this.allowImportant=allowImportant;
-            id=entry.id; this.target=target; remoteName=entry.remoteName == null ? entry.finalName : entry.remoteName;
-            size=entry.verifiedSize; this.lease=lease;
-        }
-        @Override public void close() { lease.close(); }
+        final String id,target,remoteName;final long size;final boolean allowImportant;
+        CloudDelete(String id,String target,String remoteName,long size,boolean allowImportant){this.id=id;this.target=target;this.remoteName=remoteName;this.size=size;this.allowImportant=allowImportant;}
+        @Override public void close(){} // The enclosing operation owns the exclusive reservation through DELETE and local cleanup.
     }
-    CloudDelete prepareCloudDelete(Item expected, String target, boolean allowImportant) throws IOException {
-        synchronized (LOCK) {
-            if (!target.equals(expected.cloudTarget) || !target.equals(new CloudSettings(context).targetKey()))
-                throw new IOException(I18n.s("delete_changed"));
-            if (DocumentTransfers.restoring()) throw new IOException(I18n.s("delete_busy"));
-            for (RecordIndex.Entry entry : index.all()) if (entry.id.equals(expected.id)) {
-                if (entry.state != RecordIndex.PUBLISHED) throw new IOException(I18n.s("delete_not_ready"));
+    CloudDelete prepareCloudDelete(Item expected,String target,boolean allowImportant) throws IOException {
+        synchronized(LOCK){
+            if(!target.equals(expected.cloudTarget) || !target.equals(new CloudSettings(context).targetKey()))throw new IOException(I18n.s("connection_changed"));
+            if(!ACCESS.owns(expected.file.getAbsolutePath()) || ACCESS.busy(expected.file.getAbsolutePath()))throw new IOException(I18n.s("record_busy"));
+            for(RecordIndex.Entry entry:index.all())if(entry.id.equals(expected.id)){
+                if(entry.state!=RecordIndex.PUBLISHED)throw new IOException(I18n.s("delete_not_ready"));
                 if(entry.important && !allowImportant)throw new IOException(I18n.s("important_protected"));
-                File file=published(entry.finalName);
-                if (!file.isFile() || !file.getCanonicalFile().equals(expected.file.getCanonicalFile())
-                        || file.length()!=expected.bytes || file.lastModified()!=expected.modified)
-                    throw new IOException(I18n.s("delete_changed"));
-                if (READERS.containsKey(file.getAbsolutePath())) throw new IOException(I18n.s("delete_busy"));
-                // Keep the original receipt after cloud deletion, to make a retry safe after a lost response.
-                if (!TransferPolicy.confirmed(target, entry.verifiedTarget, file.length(), entry.verifiedSize,
-                        file.lastModified(), entry.verifiedModified, entry.verifiedHash, entry.receiptKind, entry.verifiedEtag))
-                    throw new IOException(I18n.s("cloud_delete_no_receipt"));
-                Lease lease=lease(file);
-                try {
-                    index.beginCloudDelete(entry.id,target); // Durable before the first network operation.
-                    return new CloudDelete(entry,target,lease,allowImportant);
-                } catch (RuntimeException e) { lease.close(); throw e; }
+                File file=published(entry.finalName);RecordIndex.CloudCopy copy=entry.cloudCopies.get(target);
+                if(!file.getCanonicalFile().equals(expected.file.getCanonicalFile()) || expected.local && (!file.isFile() || file.length()!=expected.bytes || file.lastModified()!=expected.modified))throw new IOException(I18n.s("delete_changed"));
+                if(copy==null || !copy.name.equals(expected.remoteName) || copy.size!=expected.cloudSize)throw new IOException(I18n.s("delete_changed"));
+                // HEAD checks this exact path/size; a strong ETag gates the conditional DELETE. No audio is downloaded.
+                index.beginCloudDelete(entry.id,target);
+                return new CloudDelete(entry.id,target,copy.name,copy.size,allowImportant);
             }
             throw new IOException(I18n.s("delete_missing"));
         }
@@ -360,35 +367,37 @@ final class RecordingFiles implements AutoCloseable {
         synchronized(LOCK) { return deletion.allowImportant || !index.isImportant(deletion.id); }
     }
     boolean important(Item item, boolean value) {
-        synchronized(LOCK) { return item.file.isFile() && index.important(item.id,value); }
+        synchronized(LOCK) { return index.important(item.id,value); }
     }
     boolean listened(Item item, boolean value) {
-        synchronized(LOCK) { return item.file.isFile() && index.listened(item.id,value); }
+        synchronized(LOCK) { return index.listened(item.id,value); }
     }
     boolean importantNow(String id) { synchronized(LOCK) { return index.isImportant(id); } }
     LocalDeletion.Result cloudDeleted(CloudDelete deletion, Item item, boolean removeLocal) throws IOException {
         synchronized (LOCK) {
             index.finishCloudDelete(deletion.id,deletion.target);
+            if (!item.file.isFile()) {index.localRemoved(item.id);return LocalDeletion.Result.MISSING;}
             if (!removeLocal) return null;
-            deletion.close(); // Release our reader and delete under the same lock.
+            // The outer reservation still excludes readers until local deletion is complete.
             return deleteLocal(item,true,deletion.allowImportant);
         }
     }
     void resumeCloudUpload(Item item) throws IOException {
         synchronized (LOCK) {
             if (!item.cloudTarget.equals(new CloudSettings(context).targetKey())) throw new IOException(I18n.s("delete_changed"));
-            if (READERS.containsKey(item.file.getAbsolutePath())) throw new IOException(I18n.s("delete_busy"));
+            if (ACCESS.busy(item.file.getAbsolutePath())) throw new IOException(I18n.s("delete_busy"));
             index.resumeCloudUpload(item.id,item.cloudTarget);
         }
     }
     /** Claim a queued upload atomically against a user's deletion after the queue snapshot. */
-    Lease leaseUpload(Upload upload, String target) throws IOException {
+    Lease leaseUpload(Upload upload, String target,Runnable cancel) throws IOException {
         synchronized (LOCK) {
             for (RecordIndex.Entry entry : index.all()) if (entry.id.equals(upload.id)) {
                 if (entry.state != RecordIndex.PUBLISHED || entry.cloudDeletes.containsKey(target)) return null;
                 File file = published(entry.finalName);
                 if (!file.isFile() || !file.getCanonicalFile().equals(upload.file.getCanonicalFile())) return null;
-                return lease(file);
+                if(ACCESS.reserved(file.getAbsolutePath()))return null;
+                return lease(file,cancel);
             }
             return null;
         }
@@ -398,7 +407,7 @@ final class RecordingFiles implements AutoCloseable {
             List<Upload> list = new ArrayList<>();
             for (RecordIndex.Entry e : index.all()) if (e.state == RecordIndex.PUBLISHED) {
                 File f = published(e.finalName);
-                if (f.isFile() && !e.cloudDeletes.containsKey(target) && !isVerified(e, f, target)) list.add(new Upload(e, f));
+                if (f.isFile() && !ACCESS.reserved(f.getAbsolutePath()) && !e.cloudDeletes.containsKey(target) && !isVerified(e, f, target)) list.add(new Upload(e, f));
             }
             return list;
         }

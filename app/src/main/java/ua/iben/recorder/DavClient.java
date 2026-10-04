@@ -49,6 +49,7 @@ public final class DavClient implements AutoCloseable {
     private final Progress progress;
     private volatile boolean canceled;
     private volatile HttpURLConnection active;
+    private volatile DavFolderTransport folderTransfer;
     private ScheduledFuture<?> deadline;
 
     public DavClient(DavTarget target, String password, Progress progress) {
@@ -78,6 +79,7 @@ public final class DavClient implements AutoCloseable {
         canceled = true;
         HttpURLConnection c = active;
         if (c != null) c.disconnect();
+        DavFolderTransport folder=folderTransfer;if(folder!=null)folder.close();
     }
     private void check() throws InterruptedIOException {
         if (canceled || Thread.currentThread().isInterrupted()) throw new InterruptedIOException("Передачу призупинено");
@@ -94,7 +96,7 @@ public final class DavClient implements AutoCloseable {
         c.setRequestProperty("X-Requested-With", "XMLHttpRequest");
         c.setRequestProperty("Accept-Encoding", "identity");
         c.setRequestProperty("Cache-Control", "no-cache, no-store");
-        c.setRequestProperty("User-Agent", "IbenRecorder/0.7.3");
+        c.setRequestProperty("User-Agent", "IbenRecorder/0.7.4");
         // HttpsURLConnection lacks a write timeout. Bound the whole request as well.
         deadline = DEADLINES.schedule(c::disconnect, 9, TimeUnit.MINUTES);
         check();
@@ -181,7 +183,7 @@ public final class DavClient implements AutoCloseable {
         deleteRecording(remoteName, expectedSize, () -> true);
     }
     void deleteRecording(String remoteName, long expectedSize, BooleanSupplier allowed) throws IOException {
-        if (remoteName == null || !remoteName.endsWith(".m4a") || expectedSize <= 0)
+        if (remoteName == null || !remoteName.toLowerCase(java.util.Locale.ROOT).endsWith(".m4a") || expectedSize <= 0)
             throw new IOException(I18n.s("cloud_delete_no_receipt"));
         if (!allowed.getAsBoolean()) throw new InterruptedIOException();
         progress.update(I18n.uk("cloud_delete_checking"), 0, 0);
@@ -243,6 +245,62 @@ public final class DavClient implements AutoCloseable {
                     throw new IOException("Передача працює, але тестовий файл не видалено (HTTP " + code + ")");
             } finally { end(c); }
         } finally { if (!probe.delete()) probe.deleteOnExit(); }
+    }
+    java.util.List<DavListing.Remote> list() throws IOException {
+        check();DavFolderTransport transport=new DavFolderTransport();folderTransfer=transport;
+        ScheduledFuture<?> timer=DEADLINES.schedule(transport::close,2,TimeUnit.MINUTES);
+        try {
+            check();byte[] xml=transport.fetch(connections.open(new URL(target.folder)),authorization);check();
+            return DavListing.parse(xml,target);
+        } finally {timer.cancel(false);transport.close();folderTransfer=null;}
+    }
+    static final class RemoteInfo {
+        final long size;final String etag;
+        RemoteInfo(long size,String etag){this.size=size;this.etag=etag;}
+    }
+    RemoteInfo inspect(String name) throws IOException {
+        HttpURLConnection c=null;
+        try{c=begin("HEAD",name);int code=c.getResponseCode();if(code!=200)throw response(code);
+            long size=c.getContentLengthLong();if(size<=0)throw new IOException(I18n.s("cloud_play_failed"));
+            return new RemoteInfo(size,c.getHeaderField("ETag"));
+        }finally{end(c);}
+    }
+    static final class RangeUnavailable extends IOException { }
+    byte[] range(String name,long start,int length,RemoteInfo info) throws IOException {
+        if(start<0 || length<=0 || start>=info.size || length>1024*1024)throw new IOException("Invalid audio range");
+        int wanted=(int)Math.min(length,info.size-start);long last=start+wanted-1;HttpURLConnection c=null;
+        try{
+            c=begin("GET",name);c.setRequestProperty("Range","bytes="+start+"-"+last);
+            if(TransferPolicy.strongEtag(info.etag))c.setRequestProperty("If-Match",info.etag);
+            int code=c.getResponseCode();if(code==200)throw new RangeUnavailable();if(code!=206)throw response(code);
+            unchangedVersion(c,info);
+            String contentRange=c.getHeaderField("Content-Range");
+            if(!("bytes "+start+"-"+last+"/"+info.size).equals(contentRange))throw new IOException(I18n.s("cloud_play_failed"));
+            if(c.getContentLengthLong()>=0 && c.getContentLengthLong()!=wanted)throw new IOException(I18n.s("cloud_play_failed"));
+            byte[] bytes=new byte[wanted];int offset=0;
+            try(InputStream in=c.getInputStream()){
+                while(offset<wanted){check();int n=in.read(bytes,offset,wanted-offset);if(n<0)throw new java.io.EOFException();offset+=n;}
+                if(in.read()!=-1)throw new IOException("Oversized audio range");
+            }
+            check();return bytes;
+        }finally{end(c);}
+    }
+    void download(String name,RemoteInfo info,OutputStream output) throws IOException {
+        HttpURLConnection c=null;
+        try{
+            c=begin("GET",name);if(TransferPolicy.strongEtag(info.etag))c.setRequestProperty("If-Match",info.etag);
+            int code=c.getResponseCode();if(code!=200)throw response(code);
+            unchangedVersion(c,info);
+            if(c.getContentLengthLong()>=0 && c.getContentLengthLong()!=info.size)throw new IOException(I18n.s("cloud_play_failed"));
+            byte[] buffer=new byte[65536];long received=0;
+            try(InputStream input=c.getInputStream()){int n;while((n=input.read(buffer))!=-1){check();received+=n;if(received>info.size)throw new IOException("Changed audio size");output.write(buffer,0,n);progress.update(I18n.uk("cloud_loading"),received,info.size);}}
+            if(received!=info.size)throw new java.io.EOFException();check();
+        }finally{end(c);}
+    }
+    private static void unchangedVersion(HttpURLConnection connection,RemoteInfo info)throws IOException{
+        String current=connection.getHeaderField("ETag");
+        if(TransferPolicy.strongEtag(info.etag) && current!=null && !info.etag.equals(current))throw new IOException(I18n.s("cloud_play_failed"));
+        String encoding=connection.getHeaderField("Content-Encoding");if(encoding!=null && !"identity".equalsIgnoreCase(encoding))throw new IOException(I18n.s("cloud_play_failed"));
     }
     @Override public void close() { cancel(); }
 }

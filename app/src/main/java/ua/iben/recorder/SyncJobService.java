@@ -99,7 +99,7 @@ public final class SyncJobService extends JobService {
                             break;
                         }
                         RecordingFiles.Upload file = queue.get(0);
-                        try (RecordingFiles.Lease lease = files.leaseUpload(file, connection.target.key)) {
+                        try (RecordingFiles.Lease lease = files.leaseUpload(file, connection.target.key,this::cancel)) {
                             if (lease == null) continue; // Deleted before this upload started; re-read the queue.
                             String remoteName = file.remoteName;
                             cloud.status("Передача: " + file.name);
@@ -140,8 +140,9 @@ public final class SyncJobService extends JobService {
                 final long delay = next;
                 main.post(() -> {
                     // Keep the runner visible to onStopJob until this main-thread callback.
-                    runners.remove(parameters.getExtras().getLong("serial"), this);
-                    if (!stopped) {
+                    // A file-deletion cancellation still owns a running JobScheduler job.
+                    // Only onStopJob/onDestroy remove the runner before this callback.
+                    if (runners.remove(parameters.getExtras().getLong("serial"), this)) {
                         jobFinished(parameters, false);
                         SyncScheduler.finished(SyncJobService.this, parameters.getExtras().getLong("serial"), delay);
                     }

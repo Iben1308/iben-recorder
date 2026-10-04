@@ -12,9 +12,9 @@ wave_accessibility	Шкала звуку. Торкнися, щоб перейт�
 wave_hint	Шкала та тихі ділянки з’являться після аналізу запису.	The waveform and quiet sections appear after analysis.	Wykres i ciche fragmenty pojawią się po analizie nagrania.
 recordings	Записи	Recordings	Nagrania
 refresh	Оновити	Refresh	Odśwież
-listen_hint	Лише готові локальні файли. Під час запису слухай у навушниках, щоб мікрофон не записував динамік.	Completed local files only. Use headphones while recording to keep speaker audio out of the microphone.	Tylko gotowe pliki lokalne. Podczas nagrywania używaj słuchawek, aby mikrofon nie nagrywał głośnika.
-loading	Завантаження списку…	Loading recordings…	Wczytywanie nagrań…
-no_recordings	Готових локальних записів ще немає	No completed local recordings yet	Brak gotowych nagrań lokalnych
+listen_hint	Прослуховування триває із заблокованим екраном. «Оновити» додає записи з підключеної хмари. Під час запису користуйтеся навушниками.	Playback continues with the screen locked. Refresh adds recordings from your connected cloud. Use headphones while recording.	Odtwarzanie trwa przy zablokowanym ekranie. Odśwież dodaje nagrania z połączonej chmury. Podczas nagrywania używaj słuchawek.
+loading	Завантаження…	Loading…	Wczytywanie…
+no_recordings	Записів ще немає	No recordings yet	Brak nagrań
 record_count	Записи: %d	Recordings: %d	Nagrania: %d
 analyzing	Аналіз звуку: %d%% — файл залишається без змін	Analyzing audio: %d%% — the file stays unchanged	Analiza dźwięku: %d%% — plik pozostaje bez zmian
 silence_summary	Сіре — тиша: приблизно %d%% · поріг %d dBFS	Grey marks quiet audio: about %d%% · threshold %d dBFS	Szary oznacza ciszę: około %d%% · próg %d dBFS
@@ -23,8 +23,8 @@ play_failed	Помилка відтворення (%d / %d)	Playback error (%d /
 unavailable	Не вдалося відкрити запис	Could not open the recording	Nie udało się otworzyć nagrania
 focus_denied	Звук зайнятий іншим застосунком	Another app is using audio	Inna aplikacja korzysta z dźwięku
 speed_unsupported	Ця швидкість недоступна; відтворення на 1×	This speed is unavailable; playing at 1×	Ta prędkość jest niedostępna; odtwarzanie z prędkością 1×
-uploaded	У хмарі, перевірено	Cloud copy verified	Kopia w chmurze zweryfikowana
-local	Локальний, у черзі	Local, queued	Lokalne, w kolejce
+uploaded	На пристрої й у хмарі	On device and in cloud	Na urządzeniu i w chmurze
+local	На пристрої	On device	Na urządzeniu
 current_segment	Поточний фрагмент	Current segment	Bieżący fragment
 start_recording	● Почати запис	● Start recording	● Rozpocznij nagrywanie
 stop_save	■ Зупинити й зберегти	■ Stop and save	■ Zatrzymaj i zapisz
@@ -70,7 +70,7 @@ source_camera	Режим відеокамери	Camcorder mode	Tryb kamery
 source_raw	Без обробки — підтримується пристроєм	Unprocessed — supported by device	Bez przetwarzania — obsługiwane przez urządzenie
 input_hint	Обирай підключений вхід. Якщо вибраний пристрій від’єднається, запис чекатиме його повернення. Внутрішній звук застосунків і дзвінки тут не підтримуються.	Select a connected input. If the selected device disconnects, recording waits for it. Internal app audio and calls are not supported here.	Wybierz podłączone wejście. Po odłączeniu wybranego urządzenia nagrywanie będzie czekać na jego powrót. Dźwięk wewnętrzny aplikacji i rozmowy nie są tutaj obsługiwane.
 cleanup	При ліміті видаляти найстаріші передані записи	At the limit, delete the oldest uploaded recordings	Po osiągnięciu limitu usuń najstarsze przesłane nagrania
-cleanup_hint	Непідтверджені, важливі та зайняті записи захищені. Для нових передач підтвердження означає збіг назви й розміру, без перевірки вмісту. Якщо місця немає, запис призупиниться.	Unconfirmed, important and busy recordings are protected. For new uploads, confirmation means matching name and size without content verification. Recording pauses if storage runs out.	Niepotwierdzone, ważne i używane nagrania są chronione. Dla nowych przesłań potwierdzenie oznacza zgodność nazwy i rozmiaru bez weryfikacji treści. Nagrywanie zatrzyma się, jeśli zabraknie miejsca.
+cleanup_hint	Важливі записи та записи без підтвердженої хмарної копії не видаляються автоматично. Якщо місця немає, запис призупиниться.	Important recordings and recordings without a confirmed cloud copy are not deleted automatically. Recording pauses if storage runs out.	Ważne nagrania i nagrania bez potwierdzonej kopii w chmurze nie są automatycznie usuwane. Nagrywanie zatrzyma się, jeśli zabraknie miejsca.
 restore_manual	Відновлювати ручний запис після перезапуску	Resume manual recording after restart	Wznów ręczne nagrywanie po ponownym uruchomieniu
 save_record_settings	Зберегти параметри запису	Save recording settings	Zapisz ustawienia nagrywania
 settings_stop_hint	Для зміни цих параметрів зупини запис і дочекайся збереження.	Stop recording and wait for saving before changing these settings.	Aby zmienić te ustawienia, zatrzymaj nagrywanie i poczekaj na zapis.
@@ -166,33 +166,33 @@ wave_canceled	Побудову шкали скасовано.	Waveform processin
 wave_start_hint	Торкніться, щоб побудувати шкалу звуку.	Tap to build the audio waveform.	Dotknij, aby utworzyć wykres dźwięku.
 wave_retry	Торкніться цього повідомлення, щоб повторити.	Tap this message to retry.	Dotknij tego komunikatu, aby ponowić próbę.
 cancel	Скасувати	Cancel	Anuluj
-delete_local	Лише з телефона	Phone only	Tylko z telefonu
+delete_local	Лише з пристрою	Device only	Tylko z urządzenia
 delete_action	Видалити	Delete	Usuń
 delete_confirm	Назавжди видалити цей локальний запис?\n%s\nСкасувати видалення неможливо. Копії у WebDAV та експортовані файли залишаться без змін.	Permanently delete this local recording?\n%s\nDeletion cannot be undone. WebDAV copies and exported files will remain unchanged.	Trwale usunąć to lokalne nagranie?\n%s\nTej operacji nie można cofnąć. Kopie w WebDAV i wyeksportowane pliki pozostaną bez zmian.
 delete_verified_hint	Є підтвердження передачі до поточного підключення WebDAV. Наявність копії на сервері зараз повторно не перевіряється.	Upload to the current WebDAV connection was verified. The server copy is not checked again now.	Wysłanie do obecnego połączenia WebDAV zostało potwierdzone. Kopia na serwerze nie jest teraz sprawdzana ponownie.
-delete_unverified_hint	УВАГА: немає підтвердженої копії в поточному WebDAV. Це може бути єдина копія запису — після видалення її буде втрачено.	WARNING: there is no verified copy in the current WebDAV connection. This may be the only copy of the recording and will be lost after deletion.	UWAGA: brak potwierdzonej kopii w obecnym WebDAV. To może być jedyna kopia nagrania — po usunięciu zostanie utracona.
+delete_unverified_hint	Це може бути єдина копія запису. Після видалення відновити її буде неможливо.	This may be the only copy. Deletion cannot be undone.	To może być jedyna kopia nagrania. Tej operacji nie można cofnąć.
 delete_done	Локальний запис видалено	Local recording deleted	Lokalne nagranie usunięto
 delete_missing	Локальний запис уже недоступний	The local recording is no longer available	Lokalne nagranie nie jest już dostępne
-delete_busy	Файл зараз використовується: передається, експортується або аналізується. Дочекайтеся завершення чи скасуйте побудову шкали у сповіщенні та повторіть видалення.	The file is in use: uploading, exporting or analyzing. Wait for completion or cancel waveform processing in its notification, then retry deletion.	Plik jest używany: wysyłany, eksportowany lub analizowany. Poczekaj na zakończenie albo anuluj tworzenie wykresu w powiadomieniu i ponów usuwanie.
-delete_changed	Файл або підтвердження WebDAV змінилися. Список буде оновлено; перевірте запис і підтвердьте видалення ще раз.	The file or its WebDAV verification changed. The list will refresh; check the recording and confirm deletion again.	Plik lub potwierdzenie WebDAV uległy zmianie. Lista zostanie odświeżona; sprawdź nagranie i ponownie potwierdź usunięcie.
+delete_busy	Запис ще використовується. Спробуйте видалити його знову.	The recording is still in use. Try deleting it again.	Nagranie jest nadal używane. Spróbuj ponownie je usunąć.
+delete_changed	Запис змінився. Оновіть список і підтвердьте видалення ще раз.	The recording changed. Refresh the list and confirm deletion again.	Nagranie zmieniło się. Odśwież listę i ponownie potwierdź usunięcie.
 delete_not_ready	Можна видаляти лише завершені записи. Поточний запис і робочі файли захищені.	Only completed recordings can be deleted. The active recording and temporary files are protected.	Można usuwać tylko zakończone nagrania. Bieżące nagranie i pliki robocze są chronione.
 delete_failed	Не вдалося видалити запис	Could not delete the recording	Nie udało się usunąć nagrania
 delete_log	Ручне видалення з телефона: %s	Manually deleted from phone: %s	Ręcznie usunięto z telefonu: %s
 delete_recording	Видалити запис	Delete recording	Usuń nagranie
 delete_cloud	Лише з хмари	Cloud only	Tylko z chmury
-delete_both	З телефона і хмари	Phone and cloud	Z telefonu i chmury
-delete_cloud_confirm	Видалити хмарну копію «%s»?\n\nПапка WebDAV: %s\n\nЗапис залишиться на телефоні. Повторну передачу й автоматичне очищення цього запису буде заблоковано. Перевіримо назву й розмір без завантаження аудіо; тримайте застосунок відкритим.	Delete the cloud copy of “%s”?\n\nWebDAV folder: %s\n\nThe recording will stay on the phone. Automatic upload and cleanup of this recording will be blocked. The name and size will be checked without downloading audio; keep the app open.	Usunąć kopię „%s” z chmury?\n\nFolder WebDAV: %s\n\nNagranie pozostanie w telefonie. Automatyczne wysyłanie i czyszczenie tego nagrania zostaną zablokowane. Sprawdzimy nazwę i rozmiar bez pobierania dźwięku; pozostaw aplikację otwartą.
-delete_both_confirm	Видалити «%s» з телефона і хмари?\n\nПапка WebDAV: %s\n\nСпочатку звіримо назву й розмір та видалимо хмарну копію, потім — файл телефона. При помилці локальний файл залишиться. Тримайте застосунок відкритим.	Delete “%s” from the phone and cloud?\n\nWebDAV folder: %s\n\nThe name and size will be checked and the cloud copy deleted first, then the phone file. If an error occurs, the local file will remain. Keep the app open.	Usunąć „%s” z telefonu i chmury?\n\nFolder WebDAV: %s\n\nNajpierw sprawdzimy nazwę i rozmiar oraz usuniemy kopię w chmurze, potem plik z telefonu. W razie błędu plik lokalny pozostanie. Pozostaw aplikację otwartą.
-cloud_delete_no_receipt	Немає чинного підтвердження передачі цього запису до поточного підключення. Оновіть список після передачі або видаліть файл через WebDAV.	There is no valid upload receipt for this recording at the current connection. Refresh the list after upload, or delete the file in WebDAV.	Brak aktualnego potwierdzenia wysłania tego nagrania dla obecnego połączenia. Odśwież listę po wysłaniu lub usuń plik w WebDAV.
-cloud_delete_etag	Сервер не надав придатний ETag для безпечного видалення. Файл залишено; видаліть його через WebDAV.	The server did not provide a usable ETag for safe deletion. The file was kept; delete it in WebDAV.	Serwer nie podał odpowiedniego ETag do bezpiecznego usunięcia. Plik pozostawiono; usuń go w WebDAV.
-cloud_delete_conflict	Розмір або версія хмарного файла змінилися. Його не видалено. Перевірте файл у WebDAV.	The cloud file size or version changed. It was not deleted. Check the file in WebDAV.	Rozmiar lub wersja pliku w chmurze uległy zmianie. Nie usunięto go. Sprawdź plik w WebDAV.
+delete_both	З пристрою і хмари	Device and cloud	Z urządzenia i chmury
+delete_cloud_confirm	Видалити запис із хмари? Копія на пристрої, якщо вона є, залишиться.	Delete the recording from the cloud? Any device copy will remain.	Usunąć nagranie z chmury? Kopia na urządzeniu, jeśli istnieje, pozostanie.
+delete_both_confirm	Видалити запис із пристрою та хмари? Відновити його буде неможливо.	Delete the recording from the device and cloud? This cannot be undone.	Usunąć nagranie z urządzenia i chmury? Tej operacji nie można cofnąć.
+cloud_delete_no_receipt	Копія в цій хмарі недоступна. Оновіть список записів.	The copy in this cloud is unavailable. Refresh the recordings.	Kopia w tej chmurze jest niedostępna. Odśwież listę nagrań.
+cloud_delete_etag	Сервер не підтримує безпечне видалення через застосунок. Видаліть запис у вебінтерфейсі хмари.	The server does not support safe deletion from the app. Delete the recording in the cloud's web interface.	Serwer nie obsługuje bezpiecznego usuwania z aplikacji. Usuń nagranie w interfejsie internetowym chmury.
+cloud_delete_conflict	Запис у хмарі змінився. Оновіть список і перевірте його перед видаленням.	The cloud recording changed. Refresh the list and check it before deleting.	Nagranie w chmurze zmieniło się. Odśwież listę i sprawdź je przed usunięciem.
 cloud_delete_canceled	Операцію перервано. Якщо запит уже досяг сервера, хмарна копія могла бути видалена; повторіть операцію, щоб перевірити результат.	Operation interrupted. If the request had already reached the server, the cloud copy may have been deleted; repeat the operation to check the result.	Operacja przerwana. Jeśli żądanie dotarło już do serwera, kopia w chmurze mogła zostać usunięta; powtórz operację, aby sprawdzić wynik.
 cloud_delete_failed	Не вдалося підтвердити видалення з хмари. Перевірте підключення й повторіть операцію.	Cloud deletion could not be confirmed. Check the connection and try again.	Nie udało się potwierdzić usunięcia z chmury. Sprawdź połączenie i spróbuj ponownie.
 cloud_delete_kept	Локальний файл залишено. Якщо видалення з хмари вже почалося, повторна передача заблокована до вашого рішення.	The local file was kept. If cloud deletion had started, uploading again is blocked until you choose otherwise.	Plik lokalny pozostawiono. Jeśli usuwanie z chmury już się rozpoczęło, ponowne wysyłanie jest zablokowane do Twojej decyzji.
 cloud_delete_partial	Хмарної копії вже немає. Видалення з телефона не підтверджено; перевірте список і за потреби виберіть «Лише з телефона».	The cloud copy is gone. Phone deletion was not confirmed; check the list and choose “Phone only” if needed.	Kopii w chmurze już nie ma. Usunięcie z telefonu nie zostało potwierdzone; sprawdź listę i w razie potrzeby wybierz „Tylko z telefonu”.
 cloud_delete_done	Хмарної копії немає; запис залишено на телефоні. Автопередачу заблоковано.	The cloud copy is gone; the recording remains on the phone. Automatic upload is blocked.	Kopii w chmurze już nie ma; nagranie pozostało w telefonie. Automatyczne wysyłanie zablokowano.
 delete_both_done	Запис видалено з телефона і хмари	Recording deleted from phone and cloud	Nagranie usunięto z telefonu i chmury
-cloud_delete_progress	%s\nНе закривайте застосунок до завершення видалення.	%s\nKeep the app open until deletion finishes.	%s\nPozostaw aplikację otwartą do zakończenia usuwania.
+cloud_delete_progress	%s\nМожна згорнути застосунок.	%s\nYou can minimize the app.	%s\nMożesz zminimalizować aplikację.
 cloud_delete_pending	Видалення з хмари не завершено · автопередачу заблоковано	Cloud deletion pending · automatic upload blocked	Usunięcie z chmury niepotwierdzone · wysyłanie zablokowane
 cloud_deleted	Видалено з хмари · лише на телефоні	Deleted from cloud · phone only	Usunięto z chmury · tylko w telefonie
 cloud_upload_again	Дозволити передачу знову	Allow upload again	Zezwól na ponowne wysyłanie
@@ -255,24 +255,24 @@ certificate_confirm	Звірте цей SHA-256 з відбитком серти
 certificate_trust	Відбиток перевірено — довіряти	Fingerprint checked — trust	Odcisk sprawdzony — zaufaj
 certificate_invalid	Не вдалося використати сертифікат. Потрібен один чинний публічний сертифікат сервера у PEM або DER, до 64 КіБ, без приватного ключа.	Could not use the certificate. Provide one valid public server certificate in PEM or DER, up to 64 KiB, without a private key.	Nie można użyć certyfikatu. Wybierz jeden ważny publiczny certyfikat serwera PEM lub DER, do 64 KiB, bez klucza prywatnego.
 certificate_changed	Сертифікат сервера відрізняється від довіреного	The server certificate differs from the trusted certificate	Certyfikat serwera różni się od zaufanego
-cloud_delete_checking	Перевірка назви й розміру файла…	Checking file name and size…	Sprawdzanie nazwy i rozmiaru pliku…
-cloud_delete_removing	Видалення з хмари…	Deleting from cloud…	Usuwanie z chmury…
-cloud_delete_head	Сервер не підтримує перевірку метаданих HEAD. Швидке видалення недоступне; файл залишено.	The server does not support HEAD metadata checks. Fast deletion is unavailable; the file was kept.	Serwer nie obsługuje sprawdzania metadanych HEAD. Szybkie usuwanie jest niedostępne; plik pozostawiono.
-cloud_delete_size	Сервер не повідомив розмір файла. Видалення не виконано; перевірте WebDAV-сервер.	The server did not report the file size. Deletion was not performed; check the WebDAV server.	Serwer nie podał rozmiaru pliku. Nie usunięto go; sprawdź serwer WebDAV.
+cloud_delete_checking	Видалення запису…	Deleting recording…	Usuwanie nagrania…
+cloud_delete_removing	Видалення запису…	Deleting recording…	Usuwanie nagrania…
+cloud_delete_head	Цей сервер не підтримує безпечне видалення через застосунок. Запис збережено.	This server does not support safe deletion from the app. The recording was kept.	Ten serwer nie obsługuje bezpiecznego usuwania z aplikacji. Nagranie zachowano.
+cloud_delete_size	Не вдалося безпечно видалити запис із цього сервера. Спробуйте через вебінтерфейс хмари.	Could not safely delete the recording from this server. Try the cloud web interface.	Nie udało się bezpiecznie usunąć nagrania z tego serwera. Spróbuj w interfejsie internetowym chmury.
 help_for	Довідка: %s	Help: %s	Pomoc: %s
 wave_bookmarks	Закладки: %d · торкнися прапорця для переходу	Bookmarks: %d · tap a flag to jump	Zakładki: %d · dotknij znacznika, aby przejść
 cloud_upload_help	Передача записів	Recording uploads	Przesyłanie nagrań
 cloud_test_help	Перевірка підключення	Connection test	Test połączenia
-cloud_upload_hint	Передача підтверджується за точною назвою, розміром і ETag без повторного завантаження аудіо. Це не перевірка вмісту: підміна файла такого самого розміру може залишитися непоміченою. Підтверджені записи можуть автоматично очищуватися з телефона за встановленим лімітом.	Uploads are confirmed by exact name, size and ETag without downloading audio again. This does not verify content: a same-size replacement may go unnoticed. Confirmed recordings may be automatically removed from the phone under the storage limit.	Przesłanie potwierdzane jest przez dokładną nazwę, rozmiar i ETag bez ponownego pobierania audio. Nie sprawdza to treści: podmiana pliku na inny o tym samym rozmiarze może pozostać niewykryta. Potwierdzone nagrania mogą być automatycznie usuwane z telefonu zgodnie z limitem pamięci.
-cloud_test_hint	Перевірка створює маленький файл, перевіряє його метадані та видаляє його. Вміст назад не завантажується.	The test creates a small file, checks its metadata and deletes it. Content is not downloaded again.	Test tworzy mały plik, sprawdza jego metadane i usuwa go. Treść nie jest pobierana ponownie.
-upload_check_metadata	Перевірка назви, розміру й ETag	Checking name, size and ETag	Sprawdzanie nazwy, rozmiaru i ETag
-upload_head_required	Сервер не підтримує HEAD, потрібний для підтвердження передачі	The server does not support HEAD, required to confirm uploads	Serwer nie obsługuje HEAD, wymaganego do potwierdzenia przesłania
-upload_metadata_missing	Сервер не надав розмір або сильний ETag; передача не підтверджена	The server did not provide a size or strong ETag; upload is unconfirmed	Serwer nie podał rozmiaru lub silnego ETag; przesłanie nie jest potwierdzone
-uploaded_metadata	Передано · назва й розмір	Uploaded · name and size	Przesłano · nazwa i rozmiar
-uploaded_content	Передано · SHA-256	Uploaded · SHA-256	Przesłano · SHA-256
+cloud_upload_hint	Готові записи передаються до хмари автоматично. Успішно передані записи можуть очищатися з пристрою відповідно до ліміту пам’яті.	Completed recordings upload automatically. Uploaded recordings may be removed from the device according to the storage limit.	Gotowe nagrania są wysyłane automatycznie. Przesłane nagrania mogą być usuwane z urządzenia zgodnie z limitem pamięci.
+cloud_test_hint	Перевіряє, чи можна зберігати та видаляти записи в обраній папці хмари.	Checks whether recordings can be saved and deleted in the selected cloud folder.	Sprawdza, czy można zapisywać i usuwać nagrania w wybranym folderze chmury.
+upload_check_metadata	Завершення передачі…	Finishing upload…	Kończenie przesyłania…
+upload_head_required	Цей сервер не підтримує потрібний спосіб передачі. Перевірте налаштування WebDAV.	This server does not support the required upload method. Check the WebDAV settings.	Ten serwer nie obsługuje wymaganego sposobu przesyłania. Sprawdź ustawienia WebDAV.
+upload_metadata_missing	Не вдалося підтвердити передачу. Запис збережено на пристрої.	Could not confirm the upload. The recording was kept on the device.	Nie udało się potwierdzić przesłania. Nagranie zachowano na urządzeniu.
+uploaded_metadata	На пристрої й у хмарі	On device and in cloud	Na urządzeniu i w chmurze
+uploaded_content	На пристрої й у хмарі	On device and in cloud	Na urządzeniu i w chmurze
 upload_log_metadata	WebDAV: підтверджено назву, розмір і ETag: 	WebDAV: name, size and ETag confirmed: 	WebDAV: potwierdzono nazwę, rozmiar i ETag: 
-cloud_test_running	Перевірка передачі та метаданих…	Testing upload and metadata…	Test przesyłania i metadanych…
-cloud_test_metadata_ok	Підключення працює: передачу, назву, розмір, ETag і видалення тестового файла перевірено без завантаження його вмісту. Збережи змінені налаштування.	Connection works: upload, name, size, ETag and test-file deletion checked without downloading its content. Save any changed settings.	Połączenie działa: przesyłanie, nazwa, rozmiar, ETag i usunięcie pliku testowego sprawdzone bez pobierania jego treści. Zapisz zmienione ustawienia.
+cloud_test_running	Перевірка підключення…	Checking connection…	Sprawdzanie połączenia…
+cloud_test_metadata_ok	Підключення працює. Збережіть змінені налаштування.	The connection works. Save any changed settings.	Połączenie działa. Zapisz zmienione ustawienia.
 input_bluetooth	Bluetooth-мікрофон	Bluetooth microphone	Mikrofon Bluetooth
 input_bluetooth_active	Bluetooth · активна гарнітура SCO	Bluetooth · active SCO headset	Bluetooth · aktywny zestaw SCO
 bluetooth_permission_hint	Дозволь доступ до пристроїв поблизу для Bluetooth-мікрофона	Allow Nearby devices access for the Bluetooth microphone	Zezwól na dostęp do urządzeń w pobliżu dla mikrofonu Bluetooth
@@ -298,3 +298,32 @@ failure_storage_full	Недостатньо місця для продовжен
 failure_storage_io	Помилка запису або збереження файла	File writing or saving error	Błąd zapisu lub zapisywania pliku
 failure_stalled	Аудіодвигун не передає нові дані	The audio engine is not delivering new data	Silnik audio nie dostarcza nowych danych
 failure_unknown	Невизначена помилка запису	Unclassified recording error	Niesklasyfikowany błąd nagrywania
+location_device	На пристрої	On device	Na urządzeniu
+location_both	На пристрої й у хмарі	On device and in cloud	Na urządzeniu i w chmurze
+location_cloud	Лише у хмарі	Cloud only	Tylko w chmurze
+processing_stop_failed	Не вдалося зупинити обробку. Запис збережено; повторіть видалення.	Could not stop processing. The recording was kept; retry deletion.	Nie udało się zatrzymać przetwarzania. Nagranie zachowano; ponów usuwanie.
+record_busy	Запис зараз використовується. Спробуйте ще раз.	The recording is in use. Please try again.	Nagranie jest używane. Spróbuj ponownie.
+cloud_list_failed	Не вдалося оновити записи з хмари. Перевірте підключення.	Could not refresh cloud recordings. Check the connection.	Nie udało się odświeżyć nagrań z chmury. Sprawdź połączenie.
+cloud_play_failed	Не вдалося прочитати запис із хмари. Оновіть список і спробуйте ще раз.	Could not read the cloud recording. Refresh the list and try again.	Nie udało się odczytać nagrania z chmury. Odśwież listę i spróbuj ponownie.
+cloud_loading	Завантаження аудіо…	Loading audio…	Wczytywanie dźwięku…
+cloud_cache_space	Для прослуховування з цього сервера потрібна тимчасова копія. Файл завеликий або на пристрої недостатньо місця.	Playback from this server needs a temporary copy. The file is too large or the device has insufficient space.	Odtwarzanie z tego serwera wymaga kopii tymczasowej. Plik jest zbyt duży lub na urządzeniu brakuje miejsca.
+connection_changed	Підключення до хмари змінено. Оновіть список і повторіть дію.	The cloud connection changed. Refresh the list and try again.	Połączenie z chmurą zmieniono. Odśwież listę i ponów operację.
+local_only_warning	Цей запис є лише на пристрої. Видалити його з пристрою? Відновити запис буде неможливо.	This recording is only on the device. Delete it from the device? This cannot be undone.	To nagranie jest tylko na urządzeniu. Usunąć je z urządzenia? Tej operacji nie można cofnąć.
+batch_local_only_warning	Записів лише на пристрої: %d. Вони також будуть видалені з пристрою без можливості відновлення. Продовжити?	Recordings only on the device: %d. These will also be deleted from the device and cannot be recovered. Continue?	Nagrania tylko na urządzeniu: %d. Zostaną również usunięte z urządzenia bez możliwości odzyskania. Kontynuować?
+processing_delete_warning	Цей запис зараз використовується. Видалення зупинить його відтворення та обробку. Продовжити?	This recording is in use. Deleting it will stop its playback and processing. Continue?	To nagranie jest używane. Usunięcie zatrzyma jego odtwarzanie i przetwarzanie. Kontynuować?
+cloud_only_no_local	На пристрої немає копії цього запису.	There is no copy of this recording on the device.	Na urządzeniu nie ma kopii tego nagrania.
+cloud_wave_hint	Для запису лише у хмарі доступні перемотування та закладки. Шкала гучності будується для файлів на пристрої.	Cloud-only recordings support seeking and bookmarks. Waveforms are built for files on the device.	Nagrania tylko w chmurze obsługują przewijanie i zakładki. Wykres jest tworzony dla plików na urządzeniu.
+operation_failed	Не вдалося завершити операцію. Перевірте підключення та вільне місце.	Could not finish the operation. Check the connection and available storage.	Nie udało się zakończyć operacji. Sprawdź połączenie i wolne miejsce.
+operations	Операції із записами	Recording operations	Operacje na nagraniach
+operation_working	Виконується…	Working…	Wykonywanie…
+operation_interrupted	Операцію зупинено. Оновіть список, щоб побачити результат.	Operation stopped. Refresh the list to see the result.	Operację zatrzymano. Odśwież listę, aby zobaczyć wynik.
+operation_start_failed	Не вдалося почати операцію. Відкрийте застосунок і повторіть дію.	Could not start the operation. Open the app and try again.	Nie udało się rozpocząć operacji. Otwórz aplikację i spróbuj ponownie.
+operation_busy	Інша операція ще виконується. Зачекайте або скасуйте її.	Another operation is running. Wait or cancel it.	Inna operacja jest w toku. Poczekaj lub ją anuluj.
+cloud_refresh	Оновлення хмарних записів	Refreshing cloud recordings	Odświeżanie nagrań z chmury
+cloud_refreshed	Список хмарних записів оновлено	Cloud recordings refreshed	Lista nagrań z chmury odświeżona
+playback	Відтворення	Playback	Odtwarzanie
+playback_start_failed	Не вдалося почати відтворення. Відкрийте застосунок і спробуйте ще раз.	Could not start playback. Open the app and try again.	Nie udało się rozpocząć odtwarzania. Otwórz aplikację i spróbuj ponownie.
+playback_failed	Не вдалося відтворити запис. Для хмарного запису перевірте підключення.	Could not play the recording. For a cloud recording, check the connection.	Nie udało się odtworzyć nagrania. W przypadku nagrania z chmury sprawdź połączenie.
+delete_local_confirm	Видалити запис із пристрою? Хмарна копія, якщо вона є, залишиться.	Delete the recording from the device? Any cloud copy will remain.	Usunąć nagranie z urządzenia? Kopia w chmurze, jeśli istnieje, pozostanie.
+batch_hint	Виберіть записи та дію. Операція продовжиться із заблокованим екраном.	Select recordings and an action. The operation continues with the screen locked.	Wybierz nagrania i operację. Operacja będzie kontynuowana przy zablokowanym ekranie.
+delete_stops_export	Поточний експорт також буде зупинено.	The current export will also stop.	Bieżący eksport również zostanie zatrzymany.

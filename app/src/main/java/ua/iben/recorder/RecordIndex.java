@@ -34,9 +34,10 @@ final class RecordIndex extends SQLiteOpenHelper {
         boolean listened;
         boolean important;
         String heardRanges;
+        final Map<String, CloudCopy> cloudCopies=new HashMap<>();
         final Map<String, Boolean> cloudDeletes = new HashMap<>();
     }
-    RecordIndex(Context context) { super(context, "recordings.db", null, 6); }
+    RecordIndex(Context context) { super(context, "recordings.db", null, 7); }
     @Override public void onCreate(SQLiteDatabase db) {
         db.execSQL("CREATE TABLE records (id TEXT PRIMARY KEY, start_ms INTEGER NOT NULL, "
                 + "zone TEXT NOT NULL, duration_ms INTEGER NOT NULL DEFAULT 0, "
@@ -46,15 +47,44 @@ final class RecordIndex extends SQLiteOpenHelper {
         addCloudDeletions(db);
         addLibraryColumns(db);
         addReceiptKind(db);
+        addCloudCatalog(db);
     }
     @Override public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
-        if (oldVersion < 1 || newVersion > 6) throw new IllegalStateException("Unsupported recording index upgrade");
+        if (oldVersion < 1 || newVersion > 7) throw new IllegalStateException("Unsupported recording index upgrade");
         if (oldVersion < 2) addCloudColumns(db);
         if (oldVersion < 3) addPlaybackColumns(db);
         if (oldVersion < 4) addCloudDeletions(db);
         if (oldVersion < 5) addLibraryColumns(db);
         if (oldVersion < 6) addReceiptKind(db);
+        if (oldVersion < 7) addCloudCatalog(db);
     }
+    static final class CloudCopy {
+        final String target,name,etag;final long size,modified,seen;final boolean present;
+        CloudCopy(String target,String name,long size,String etag,long modified,boolean present,long seen){
+            this.target=target;this.name=name;this.size=size;this.etag=etag;this.modified=modified;this.present=present;this.seen=seen;
+        }
+    }
+    private static void addCloudCatalog(SQLiteDatabase db) {
+        db.execSQL("CREATE TABLE cloud_files (target TEXT NOT NULL, remote_name TEXT NOT NULL, record_id TEXT NOT NULL, size INTEGER NOT NULL, etag TEXT, modified_ms INTEGER NOT NULL DEFAULT 0, present INTEGER NOT NULL DEFAULT 1, seen_ms INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(target,remote_name))");
+        db.execSQL("CREATE UNIQUE INDEX cloud_files_record ON cloud_files(record_id,target)");
+        // Carry receipts forward so deleting a local copy never discards its cloud catalogue entry.
+        db.execSQL("INSERT OR IGNORE INTO cloud_files(target,remote_name,record_id,size,etag,modified_ms,present) SELECT verified_target,COALESCE(remote_name,final_name),id,verified_size,verified_etag,verified_modified,CASE WHEN EXISTS(SELECT 1 FROM cloud_deletions d WHERE d.record_id=records.id AND d.target=records.verified_target AND d.done=1) THEN 0 ELSE 1 END FROM records WHERE verified_target IS NOT NULL AND verified_size>0 AND receipt_kind IN (1,2) AND final_name IS NOT NULL");
+    }
+    void cloudKnown(String id,String target,String name,long size,String etag,long modified,long seen) {
+        ContentValues v=new ContentValues();v.put("record_id",id);v.put("target",target);v.put("remote_name",name);
+        v.put("size",size);v.put("etag",etag);v.put("modified_ms",modified);v.put("present",1);v.put("seen_ms",seen);
+        getWritableDatabase().insertWithOnConflict("cloud_files",null,v,SQLiteDatabase.CONFLICT_REPLACE);
+    }
+    void cloudMissing(String target,long scanStarted) {
+        ContentValues v=new ContentValues();v.put("present",0);
+        getWritableDatabase().update("cloud_files",v,"target=? AND seen_ms<=?",new String[]{target,Long.toString(scanStarted)});
+    }
+    void localRemoved(String id) {
+        try(Cursor cursor=getReadableDatabase().rawQuery("SELECT 1 FROM cloud_files WHERE record_id=? AND present=1 LIMIT 1",new String[]{id})) {
+            if(!cursor.moveToFirst())remove(id);
+        }
+    }
+    void duration(String id,long millis){ContentValues v=new ContentValues();v.put("duration_ms",Math.max(0,millis));getWritableDatabase().update("records",v,"id=?",new String[]{id});}
     private static void addReceiptKind(SQLiteDatabase db) {
         db.execSQL("ALTER TABLE records ADD COLUMN receipt_kind INTEGER NOT NULL DEFAULT 0");
         db.execSQL("ALTER TABLE records ADD COLUMN verified_etag TEXT");
@@ -134,6 +164,8 @@ final class RecordIndex extends SQLiteOpenHelper {
         ContentValues values = new ContentValues(); values.put("done", 1);
         if (getWritableDatabase().update("cloud_deletions", values, "record_id=? AND target=?", new String[]{id,target}) != 1)
             throw new IllegalStateException("Cloud deletion intent is missing");
+        ContentValues absent=new ContentValues();absent.put("present",0);
+        getWritableDatabase().update("cloud_files",absent,"record_id=? AND target=?",new String[]{id,target});
     }
     void resumeCloudUpload(String id, String target) {
         SQLiteDatabase db = getWritableDatabase();
@@ -180,6 +212,7 @@ final class RecordIndex extends SQLiteOpenHelper {
         v.put("remote_name", remoteName);
         if (getWritableDatabase().update("records", v, "id=? AND state=?", new String[]{id, String.valueOf(PUBLISHED)}) != 1)
             throw new IllegalStateException("Готовий запис відсутній у реєстрі");
+        cloudKnown(id,target,remoteName,receipt.size,receipt.etag,System.currentTimeMillis(),System.currentTimeMillis());
     }
     void create(String id, long start, String zone) {
         ContentValues values = new ContentValues();
@@ -205,6 +238,7 @@ final class RecordIndex extends SQLiteOpenHelper {
     void remove(String id) {
         SQLiteDatabase db=getWritableDatabase();db.beginTransaction();
         try {
+            db.delete("cloud_files","record_id=?",new String[]{id});
             db.delete("bookmarks","record_id=?",new String[]{id});
             db.delete("cloud_deletions","record_id=?",new String[]{id});
             db.delete("records","id=?",new String[]{id});
@@ -236,6 +270,13 @@ final class RecordIndex extends SQLiteOpenHelper {
             while (cursor.moveToNext()) {
                 Entry entry = byId.get(cursor.getString(0));
                 if (entry != null) entry.cloudDeletes.put(cursor.getString(1), cursor.getInt(2) != 0);
+            }
+        }
+        try(Cursor cursor=getReadableDatabase().query("cloud_files",new String[]{"record_id","target","remote_name","size","etag","modified_ms","present","seen_ms"},null,null,null,null,null)) {
+            while(cursor.moveToNext()){
+                Entry entry=byId.get(cursor.getString(0));if(entry==null)continue;
+                CloudCopy copy=new CloudCopy(cursor.getString(1),cursor.getString(2),cursor.getLong(3),cursor.getString(4),cursor.getLong(5),cursor.getInt(6)!=0,cursor.getLong(7));
+                entry.cloudCopies.put(copy.target,copy);
             }
         }
         return result;

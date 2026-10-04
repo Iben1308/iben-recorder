@@ -8,7 +8,7 @@ import java.util.concurrent.*;
 /** An explicitly selected legacy recording; independent of the Activity, stops when done. */
 public final class WaveformService extends Service {
     private static final String CANCEL="ua.iben.recorder.oreo.CANCEL_WAVE";
-    private static final int NOTIFICATION=8113;
+    private static final int NOTIFICATION=8123;
     private static final long MAX_TIME=30*60000L;
     static final class State {
         final String id; final int percent; final WaveformAnalyzer.Data data; final String error;
@@ -59,8 +59,9 @@ public final class WaveformService extends Service {
             try(RecordingFiles files=new RecordingFiles(getApplicationContext(),new Config(getApplicationContext()))){
                 RecordingFiles.Item item=null;
                 for(RecordingFiles.Item candidate:files.recordings())if(candidate.id.equals(selected)){item=candidate;break;}
-                if(item==null)throw new IOException(I18n.s("unavailable"));
-                try(RecordingFiles.Lease ignored=RecordingFiles.lease(item.file)){
+                if(item==null || !item.local)throw new IOException(I18n.s("unavailable"));
+                Thread analysisThread=Thread.currentThread();
+                try(RecordingFiles.Lease ignored=RecordingFiles.lease(item.file,analysisThread::interrupt)){
                     result=WaveformAnalyzer.read(getApplicationContext(),item.file,item.duration,percent->main.post(()->{
                         if(token!=generation)return;
                         State old=state;state=new State(selected,percent,null,null);
@@ -68,8 +69,8 @@ public final class WaveformService extends Service {
                     }));
                 }
             }catch(Exception e){
-                if(Thread.currentThread().isInterrupted())return;
-                error=I18n.tr(e.getMessage()==null?I18n.s("analysis_failed"):e.getMessage());
+                if(Thread.currentThread().isInterrupted()){Thread.interrupted();error=I18n.s("wave_canceled");}
+                else error=I18n.tr(e.getMessage()==null?I18n.s("analysis_failed"):e.getMessage());
             }
             WaveformAnalyzer.Data data=result;String problem=error;
             main.post(()->{

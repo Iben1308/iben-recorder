@@ -213,17 +213,8 @@ public final class MainActivity extends Activity {
         }
         if (request != EXPORT && request != RESTORE) return;
         android.net.Uri uri = data.getData(); String id = exportId;
-        android.content.Context app = getApplicationContext();
-        ui.toast(I18n.s("copying"));
-        new Thread(() -> {
-            String message;
-            try {
-                if (request == EXPORT) { DocumentTransfers.export(app, id, uri); message = I18n.s("export_done"); }
-                else message = I18n.s("restore_done", DocumentTransfers.restore(app, uri));
-            } catch (Exception e) { message = I18n.s("copy_failed") + " " + I18n.tr(e.getMessage()); }
-            String text = message;
-            runOnUiThread(() -> { if (!isDestroyed()) { ui.toast(text); if (currentTab == 0) listen.load(); } });
-        }, "iben-documents").start();
+        if(!OperationsService.start(this,OperationsService.Request.document(request==RESTORE,id,uri)))ui.toast(I18n.s("operation_busy"));
+
     }
     private final Runnable tick = new Runnable() {
         @Override public void run() {

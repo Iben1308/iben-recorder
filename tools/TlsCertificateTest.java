@@ -60,7 +60,12 @@ public final class TlsCertificateTest {
                 check(Arrays.equals(server.files.get("/records/recording.m4a"),bytes),"Pinned self-signed HTTPS uploads through production client");
                 check(receipt.kind==TransferPolicy.METADATA && receipt.sha256==null && TransferPolicy.strongEtag(receipt.etag),
                         "Production HTTPS returns an explicitly metadata-only receipt");
+                try(DavClient client=new DavClient(target,"password",QUIET,imported)){
+                    check(client.list().size()==1,"Pinned PROPFIND uses the production raw TLS transport");
+                }
                 int requests=server.requests.get();
+                fails(()->{try(DavClient client=new DavClient(target,"password",QUIET)){client.list();}},"PROPFIND default trust rejects self-signed certificate");
+                check(server.requests.get()==requests,"Untrusted catalogue sends no HTTP credentials");
                 fails(()->{try(DavClient client=new DavClient(target,"password",QUIET)){client.upload(source,"no-pin.m4a");}},"Default trust rejects self-signed server");
                 check(server.requests.get()==requests,"Failed default TLS sends no HTTP credentials");
                 String otherPin=TlsCertificate.importPublic(other.getCertificate("server").getEncoded());
@@ -78,6 +83,7 @@ public final class TlsCertificateTest {
                 String pin=TlsCertificate.importPublic(wrongHost.getCertificate("server").getEncoded());
                 File source=directory.resolve("recording.m4a").toFile();
                 fails(()->{try(DavClient client=new DavClient(server.target(),"password",QUIET,pin)){client.upload(source,"bad-host.m4a");}},"An imported certificate does not disable hostname verification");
+                fails(()->{try(DavClient client=new DavClient(server.target(),"password",QUIET,pin)){client.list();}},"PROPFIND pinning also retains hostname verification");
                 check(server.requests.get()==0,"Wrong hostname sends no HTTP credentials");
             }
         } finally {
@@ -122,7 +128,10 @@ public final class TlsCertificateTest {
                     String auth="Basic "+Base64.getEncoder().encodeToString("user:password".getBytes(StandardCharsets.UTF_8));
                     if(!auth.equals(exchange.getRequestHeaders().getFirst("Authorization"))){exchange.sendResponseHeaders(401,-1);return;}
                     String path=exchange.getRequestURI().getPath(),method=exchange.getRequestMethod();
-                    if(method.equals("HEAD")) {
+                    if(method.equals("PROPFIND")){
+                        byte[] listing=CloudPlaybackTest.xml(CloudPlaybackTest.entry("/records/recording.m4a","","200 OK"));
+                        exchange.sendResponseHeaders(207,listing.length);exchange.getResponseBody().write(listing);
+                    } else if(method.equals("HEAD")) {
                         byte[] bytes=files.get(path);
                         if(bytes==null){exchange.sendResponseHeaders(404,-1);return;}
                         exchange.getResponseHeaders().set("Content-Length",Integer.toString(bytes.length));
