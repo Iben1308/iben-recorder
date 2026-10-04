@@ -23,8 +23,8 @@ public final class MainActivity extends Activity {
     private final ImageButton[] tabs = new ImageButton[3];
     private ListenPanel listen;
     private SettingsPanel settings;
-    private TextView status, duration, details, gainLabel, levelLabel, cloud, input;
-    private Button record, addBookmark;
+    private TextView status, duration, details, gainLabel, levelLabel, cloud, input, captureStatus;
+    private Button record, addBookmark, retryRecording;
     private ProgressBar level;
     private int currentTab = 1;
     private Runnable afterPermission;
@@ -90,6 +90,9 @@ public final class MainActivity extends Activity {
             if(moment==null)ui.toast(I18n.s("bookmark_unavailable"));
             else Bookmarks.add(this,ui,moment.id,moment.millis);
         },false);
+        retryRecording=ui.button(main,I18n.s("record_retry_now"),() -> recordingPermission(() -> {
+            if(!RecorderService.retryNow())ScheduleManager.wake(this);
+        }),false);
         details = ui.text(main, "", 13, ui.muted);
         LinearLayout sound = ui.card(page);
         ui.helpTitle(sound, I18n.s("sound"), I18n.s("gain_hint"));
@@ -97,6 +100,7 @@ public final class MainActivity extends Activity {
         level = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
         level.setMax(100); sound.addView(level, new LinearLayout.LayoutParams(-1, ui.dp(12)));
         level.setContentDescription(I18n.s("level"));
+        captureStatus=ui.text(sound,"",13,ui.red);
         gainLabel = ui.text(sound, "", 16, ui.ink);
         SeekBar gain = new SeekBar(this); gain.setMax(24); gain.setProgress(config.gainDb()); sound.addView(gain);
         gain.setContentDescription(I18n.s("gain_accessibility"));
@@ -132,7 +136,14 @@ public final class MainActivity extends Activity {
         if(currentTab==0 && listen.finishSelection())return;
         super.onBackPressed();
     }
-    void recordingPermission(Runnable action) { permission(Platform.permissions(true), () -> notificationPermission(action)); }
+    void recordingPermission(Runnable action) { permission(Platform.permissions(true), () -> {
+        if(AudioInputPolicy.bluetooth(config.input()))bluetoothPermission(() -> notificationPermission(action));
+        else notificationPermission(action);
+    }); }
+    void bluetoothPermission(Runnable action) {
+        if(Build.VERSION.SDK_INT>=31)permission(new String[]{Manifest.permission.BLUETOOTH_CONNECT},action);
+        else action.run();
+    }
     void storagePermission(Runnable action) { permission(Platform.permissions(false), action); }
     private void permission(String[] permissions, Runnable action) {
         for (String p : permissions) if (checkSelfPermission(p) != PackageManager.PERMISSION_GRANTED) {
@@ -151,7 +162,7 @@ public final class MainActivity extends Activity {
         if (request != 100 || afterPermission == null) return;
         Runnable action = afterPermission; afterPermission = null;
         for (String p : requestedPermissions) if (checkSelfPermission(p) != PackageManager.PERMISSION_GRANTED) {
-            ui.toast(I18n.s("permission_required")); return;
+            ui.toast(I18n.s(p.equals(Manifest.permission.BLUETOOTH_CONNECT) ? "bluetooth_permission_hint" : "permission_required")); return;
         }
         action.run();
     }
@@ -233,19 +244,33 @@ public final class MainActivity extends Activity {
         boolean stale = (wanted || engine) && System.currentTimeMillis() - config.prefs.getLong("heartbeat", 0) > 90000;
         boolean active = engine && !stale;
         status.setText(config.prefs.getBoolean("awaiting_user", false) ? I18n.s("resume_required") : stale ? I18n.s("stale") : I18n.tr(config.prefs.getString("status", "Запис вимкнено")));
+        String failure=config.prefs.getString("record_failure","");
+        boolean waiting=wanted && !engine && !failure.isEmpty();
+        retryRecording.setVisibility(waiting ? View.VISIBLE : View.GONE);
+        if(waiting) {
+            try {
+                RecordingFailure.Reason reason=RecordingFailure.Reason.valueOf(failure);
+                long at=config.prefs.getLong("record_retry_at",0);
+                status.setText(I18n.s(RecordingFailure.key(reason))+"\n"+(at==0 ? I18n.s("recovery_user_action")
+                        : I18n.s("recovery_countdown",Math.max(0,(at-System.currentTimeMillis()+999)/1000))));
+            } catch(IllegalArgumentException ignored) { }
+        }
         duration.setText(Ui.clock(active ? config.prefs.getLong("segment_ms", 0) : 0));
         record.setText(I18n.s(wanted ? "stop_save" : engine && !stale ? "saving" : "start_recording"));
         record.setEnabled(wanted || !active);
         addBookmark.setEnabled(RecorderService.bookmarkPosition()!=null);
         long used = config.prefs.getLong("used_bytes", 0), free = config.prefs.getLong("free_bytes", 0);
         details.setText(I18n.s("storage_info", used / 1048576d, config.quotaMiB(), free / 1048576d)
-                + "\n" + I18n.s("format_info", config.minutes(), config.bitrate(), config.sampleRate())
+                + "\n" + I18n.s("format_info", config.minutes(), config.captureBitrate(), config.captureRate())
                 + (active && config.prefs.getInt("finishing", 0) > 0 ? "\n" + I18n.s("finishing", config.prefs.getInt("finishing", 0)) : ""));
         int peak = active ? config.prefs.getInt("peak", 0) : 0; level.setProgress(peak);
         level.setProgressTintList(android.content.res.ColorStateList.valueOf(peak >= 95 ? ui.red : ui.accent));
         float raw = active ? config.prefs.getFloat("peak_raw", peak / 100f) : 0;
         String db = raw > 0 ? String.format(Locale.ROOT, "%.0f dBFS", 20 * Math.log10(raw)) : "−∞ dBFS";
         levelLabel.setText(I18n.s("level_value", peak, db) + (active && config.prefs.getBoolean("limiting", false) ? " · " + I18n.s("limiter") : ""));
+        int health=active ? config.prefs.getInt("capture_health",CaptureHealth.NORMAL) : CaptureHealth.NORMAL;
+        captureStatus.setVisibility(health==CaptureHealth.NORMAL ? View.GONE : View.VISIBLE);
+        captureStatus.setText(health==CaptureHealth.SYSTEM_SILENCED ? I18n.s("capture_system_silenced") : I18n.s("capture_zero_signal"));
         gainLabel.setText(I18n.s("gain", config.gainDb()));
         String route = config.prefs.getString("input_route", "");
         input.setText(I18n.s("actual_input") + ": " + (active && !route.isEmpty() ? AudioInputs.labelKey(route) : "—"));

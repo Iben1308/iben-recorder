@@ -131,7 +131,7 @@ public final class CloudActivity extends Activity {
         String folder = address.getText().toString(); String login = user.getText().toString();
         String typedPassword = password.getText().toString();
         boolean http=localHttp.isChecked() && httpConfirmed;String certificate=trustedCertificate;
-        busy(true); testStatus.setText(I18n.tr("Перевірка читання й запису…"));
+        busy(true); testStatus.setText(I18n.s("cloud_test_running"));
         new Thread(() -> {
             String result;
             try {
@@ -148,7 +148,7 @@ public final class CloudActivity extends Activity {
                     if (gone) return;
                     client.test(getCacheDir());
                 } finally { client.close(); testClient = null; }
-                result = "Підключення працює: запис, читання, SHA-256 і видалення тестового файла перевірено. Збережи налаштування, якщо змінював їх.";
+                result = I18n.s("cloud_test_metadata_ok");
             } catch (Exception e) { result = CloudSettings.error(e); }
             final String message = result;
             runOnUiThread(() -> { if (!gone) { busy(false); testStatus.setText(I18n.tr(message)); } });

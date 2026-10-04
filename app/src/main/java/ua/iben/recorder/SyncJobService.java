@@ -84,7 +84,7 @@ public final class SyncJobService extends JobService {
                     long now = SystemClock.elapsedRealtime();
                     if (current() && now - lastProgress > 1000L) {
                         lastProgress = now;
-                        cloud.status(phase + ": " + (total == 0 ? 0 : done * 100L / total) + "%");
+                        cloud.status(total>0 ? phase + ": " + (done * 100L / total) + "%" : phase);
                     }
                 });
                 long started = SystemClock.elapsedRealtime();
@@ -117,7 +117,7 @@ public final class SyncJobService extends JobService {
                             ProblemNotifications.cloudHealthy(SyncJobService.this);
                             cloud.prefs.edit().putString("last_file", file.name).putLong("last_success", System.currentTimeMillis())
                                     .putInt("failures", 0).putLong("retry_at", 0).putInt("pending", queue.size() - 1).apply();
-                            AppLog.write(SyncJobService.this, "WebDAV: передано й перевірено SHA-256: " + file.name);
+                            AppLog.write(SyncJobService.this, I18n.s("upload_log_metadata") + file.name);
                         }
                         // Let the OS reschedule before its execution window is exhausted.
                         if (SystemClock.elapsedRealtime() - started > 4 * 60000L) { next = 1000L; break; }

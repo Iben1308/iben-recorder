@@ -778,7 +778,7 @@ final class ListenPanel {
             name.setTypeface(null, android.graphics.Typeface.NORMAL); name.setText((item.important ? "★ " : "")+item.name);
             detail.setText(Ui.clock(item.duration) + " · " + String.format(Locale.ROOT, "%.1f MiB", item.bytes / 1048576d)
                     + " · " + I18n.s(item.cloudDeleteState == 1 ? "cloud_delete_pending"
-                            : item.cloudDeleteState == 2 ? "cloud_deleted" : item.uploaded ? "uploaded" : "local") + "\n"
+                            : item.cloudDeleteState == 2 ? "cloud_deleted" : item.uploaded ? item.receiptKind==TransferPolicy.METADATA ? "uploaded_metadata" : "uploaded_content" : "local") + "\n"
                     + I18n.s(item.listened ? "filter_listened" : "filter_unlistened")
                     + (item.position > 0 ? " · " + I18n.s("resume_at", Ui.clock(item.position)) : ""));
             return row;

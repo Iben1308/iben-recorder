@@ -245,8 +245,8 @@ final class RecordingFiles implements AutoCloseable {
         return s;
     }
     private boolean isVerified(RecordIndex.Entry entry, File file, String target) {
-        return !entry.cloudDeletes.containsKey(target) && TransferPolicy.verified(target, entry.verifiedTarget, file.length(), entry.verifiedSize,
-                file.lastModified(), entry.verifiedModified, entry.verifiedHash);
+        return !entry.cloudDeletes.containsKey(target) && TransferPolicy.confirmed(target, entry.verifiedTarget, file.length(), entry.verifiedSize,
+                file.lastModified(), entry.verifiedModified, entry.verifiedHash, entry.receiptKind, entry.verifiedEtag);
     }
     static final class Upload {
         final String id;
@@ -266,6 +266,7 @@ final class RecordingFiles implements AutoCloseable {
         final File file;
         final long start, duration, bytes, modified;
         final boolean uploaded;
+        final int receiptKind;
         final String cloudTarget;
         final int cloudDeleteState;
         long position;
@@ -274,7 +275,7 @@ final class RecordingFiles implements AutoCloseable {
         String heardRanges;
         Item(RecordIndex.Entry e, File f, boolean uploaded, String target) {
             id = e.id; name = e.finalName; file = f; start = e.start; duration = e.duration;
-            bytes = f.length(); modified = f.lastModified(); this.uploaded = uploaded;
+            bytes = f.length(); modified = f.lastModified(); this.uploaded = uploaded;receiptKind=e.receiptKind;
             cloudTarget = target;
             cloudDeleteState = !e.cloudDeletes.containsKey(target) ? 0 : e.cloudDeletes.get(target) ? 2 : 1;
             position=PlaybackProgress.resume(e.position,duration);listened=e.listened;heardRanges=e.heardRanges;important=e.important;
@@ -343,8 +344,8 @@ final class RecordingFiles implements AutoCloseable {
                     throw new IOException(I18n.s("delete_changed"));
                 if (READERS.containsKey(file.getAbsolutePath())) throw new IOException(I18n.s("delete_busy"));
                 // Keep the original receipt after cloud deletion, to make a retry safe after a lost response.
-                if (!TransferPolicy.verified(target, entry.verifiedTarget, file.length(), entry.verifiedSize,
-                        file.lastModified(), entry.verifiedModified, entry.verifiedHash))
+                if (!TransferPolicy.confirmed(target, entry.verifiedTarget, file.length(), entry.verifiedSize,
+                        file.lastModified(), entry.verifiedModified, entry.verifiedHash, entry.receiptKind, entry.verifiedEtag))
                     throw new IOException(I18n.s("cloud_delete_no_receipt"));
                 Lease lease=lease(file);
                 try {

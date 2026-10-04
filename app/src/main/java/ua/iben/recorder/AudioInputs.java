@@ -17,12 +17,14 @@ final class AudioInputs {
     }
     static String key(AudioDeviceInfo d) { return d.getType() + ":" + d.getProductName(); }
     static String labelKey(String key) {
+        if(AudioInputPolicy.bluetooth(key))return I18n.s("input_bluetooth");
         int colon = key.indexOf(':');
         if (colon < 0) return key;
         String kind = "input_other";
         try {
             int type = Integer.parseInt(key.substring(0, colon));
             if (type == AudioDeviceInfo.TYPE_BUILTIN_MIC) kind = "input_builtin";
+            else if (BluetoothRoute.type(type)) kind = "input_bluetooth";
             else if (type == AudioDeviceInfo.TYPE_WIRED_HEADSET) kind = "input_wired";
             else if (type == AudioDeviceInfo.TYPE_USB_DEVICE || type == AudioDeviceInfo.TYPE_USB_HEADSET) kind = "input_usb";
         } catch (NumberFormatException ignored) { }
@@ -49,6 +51,8 @@ final class AudioInputs {
             if (!supported(d)) continue;
             list.add(new Choice(key(d), label(d))); found |= key(d).equals(selected);
         }
+        BluetoothRoute.choices(context,list);
+        for(Choice choice:list)found|=choice.key.equals(selected);
         if (!found) list.add(new Choice(selected, I18n.s("input_unavailable") + " · " + selected));
         return list;
     }
@@ -56,11 +60,11 @@ final class AudioInputs {
         if ("auto".equals(config.input())) return null;
         for (AudioDeviceInfo d : config.context.getSystemService(AudioManager.class).getDevices(AudioManager.GET_DEVICES_INPUTS)) {
             if (supported(d) && key(d).equals(config.input())) {
-                if (!record.setPreferredDevice(d)) throw new IOException("Не вдалося вибрати аудіовхід");
+                if (!record.setPreferredDevice(d)) throw new RecordingFailure(RecordingFailure.Reason.INPUT_UNAVAILABLE);
                 return d;
             }
         }
-        throw new IOException("Обраний аудіовхід від’єднаний; очікування підключення");
+        throw new RecordingFailure(RecordingFailure.Reason.INPUT_UNAVAILABLE);
     }
     static boolean rawSupported(Context c) {
         return "true".equals(c.getSystemService(AudioManager.class).getProperty(AudioManager.PROPERTY_SUPPORT_AUDIO_SOURCE_UNPROCESSED));

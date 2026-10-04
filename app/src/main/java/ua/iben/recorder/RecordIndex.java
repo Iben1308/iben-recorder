@@ -27,6 +27,8 @@ final class RecordIndex extends SQLiteOpenHelper {
         long verifiedSize;
         long verifiedModified;
         String verifiedHash;
+        int receiptKind;
+        String verifiedEtag;
         String remoteName;
         long position;
         boolean listened;
@@ -34,7 +36,7 @@ final class RecordIndex extends SQLiteOpenHelper {
         String heardRanges;
         final Map<String, Boolean> cloudDeletes = new HashMap<>();
     }
-    RecordIndex(Context context) { super(context, "recordings.db", null, 5); }
+    RecordIndex(Context context) { super(context, "recordings.db", null, 6); }
     @Override public void onCreate(SQLiteDatabase db) {
         db.execSQL("CREATE TABLE records (id TEXT PRIMARY KEY, start_ms INTEGER NOT NULL, "
                 + "zone TEXT NOT NULL, duration_ms INTEGER NOT NULL DEFAULT 0, "
@@ -43,13 +45,20 @@ final class RecordIndex extends SQLiteOpenHelper {
         addPlaybackColumns(db);
         addCloudDeletions(db);
         addLibraryColumns(db);
+        addReceiptKind(db);
     }
     @Override public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
-        if (oldVersion < 1 || newVersion > 5) throw new IllegalStateException("Unsupported recording index upgrade");
+        if (oldVersion < 1 || newVersion > 6) throw new IllegalStateException("Unsupported recording index upgrade");
         if (oldVersion < 2) addCloudColumns(db);
         if (oldVersion < 3) addPlaybackColumns(db);
         if (oldVersion < 4) addCloudDeletions(db);
         if (oldVersion < 5) addLibraryColumns(db);
+        if (oldVersion < 6) addReceiptKind(db);
+    }
+    private static void addReceiptKind(SQLiteDatabase db) {
+        db.execSQL("ALTER TABLE records ADD COLUMN receipt_kind INTEGER NOT NULL DEFAULT 0");
+        db.execSQL("ALTER TABLE records ADD COLUMN verified_etag TEXT");
+        db.execSQL("UPDATE records SET receipt_kind=1 WHERE verified_hash IS NOT NULL");
     }
     private static void addLibraryColumns(SQLiteDatabase db) {
         db.execSQL("ALTER TABLE records ADD COLUMN important INTEGER NOT NULL DEFAULT 0");
@@ -159,7 +168,7 @@ final class RecordIndex extends SQLiteOpenHelper {
     }
     void clearVerification(String id) {
         ContentValues v = new ContentValues();
-        v.putNull("verified_target"); v.putNull("verified_hash");
+        v.putNull("verified_target"); v.putNull("verified_hash");v.putNull("verified_etag");v.put("receipt_kind",TransferPolicy.NONE);
         v.put("verified_size", -1L); v.put("verified_modified", -1L);
         getWritableDatabase().update("records", v, "id=?", new String[]{id});
     }
@@ -167,6 +176,7 @@ final class RecordIndex extends SQLiteOpenHelper {
         ContentValues v = new ContentValues();
         v.put("verified_target", target); v.put("verified_size", receipt.size);
         v.put("verified_modified", receipt.modified); v.put("verified_hash", receipt.sha256);
+        v.put("receipt_kind",receipt.kind);v.put("verified_etag",receipt.etag);
         v.put("remote_name", remoteName);
         if (getWritableDatabase().update("records", v, "id=? AND state=?", new String[]{id, String.valueOf(PUBLISHED)}) != 1)
             throw new IllegalStateException("Готовий запис відсутній у реєстрі");
@@ -205,7 +215,7 @@ final class RecordIndex extends SQLiteOpenHelper {
         List<Entry> result = new ArrayList<>();
         try (Cursor cursor = getReadableDatabase().query("records",
                 new String[]{"id", "start_ms", "zone", "duration_ms", "final_name", "state",
-                        "verified_target", "verified_size", "verified_modified", "verified_hash", "remote_name", "playback_ms", "listened", "heard_ranges", "important"},
+                        "verified_target", "verified_size", "verified_modified", "verified_hash", "remote_name", "playback_ms", "listened", "heard_ranges", "important", "receipt_kind", "verified_etag"},
                 null, null, null, null, "start_ms ASC")) {
             while (cursor.moveToNext()) {
                 Entry e = new Entry();
@@ -215,6 +225,7 @@ final class RecordIndex extends SQLiteOpenHelper {
                 e.verifiedModified = cursor.getLong(8); e.verifiedHash = cursor.getString(9);
                 e.remoteName = cursor.getString(10);
                 e.position=cursor.getLong(11);e.listened=cursor.getInt(12)!=0;e.heardRanges=cursor.getString(13);e.important=cursor.getInt(14)!=0;
+                e.receiptKind=cursor.getInt(15);e.verifiedEtag=cursor.getString(16);
                 result.add(e);
             }
         }

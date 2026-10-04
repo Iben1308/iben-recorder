@@ -153,3 +153,16 @@ WebDAV: передано й перевірено SHA-256: 	WebDAV: uploaded and 
 Черга завершення файлів переповнена	The file finalization queue is full	Kolejka finalizacji plików jest pełna
 Черга передачі порожня	Upload queue is empty	Kolejka wysyłania jest pusta
 Файл заблокований сервером	The file is locked by the server	Plik jest zablokowany przez serwer
+Перевір дозволи або параметри. Після виправлення натисни «Повторити запуск»; для зміни параметрів спочатку зупини запис.	Check permissions or settings. After correcting them, tap Retry recording; stop recording first to change settings.	Sprawdź uprawnienia lub ustawienia. Po poprawieniu naciśnij Ponów nagrywanie; najpierw zatrzymaj nagrywanie, aby zmienić ustawienia.
+Мікрофон заглушено системою	Microphone silenced by the system	Mikrofon wyciszony przez system
+Тривалий нульовий сигнал мікрофона	Sustained zero microphone signal	Długotrwały zerowy sygnał mikrofonu
+Немає потрібного дозволу на мікрофон, сховище або Bluetooth	A microphone, storage or Bluetooth permission is missing	Brak wymaganego uprawnienia do mikrofonu, pamięci lub Bluetooth
+Обрані параметри запису не підтримуються	The selected recording settings are unsupported	Wybrane ustawienia nagrywania nie są obsługiwane
+Обраний аудіовхід недоступний; очікування повернення	The selected audio input is unavailable; waiting for its return	Wybrane wejście audio jest niedostępne; oczekiwanie na powrót
+Мікрофон або Bluetooth-маршрут зайнятий	The microphone or Bluetooth route is busy	Mikrofon lub trasa Bluetooth są zajęte
+Помилка читання мікрофона	Microphone read error	Błąd odczytu mikrofonu
+Помилка або перевантаження аудіокодека	Audio codec error or overload	Błąd lub przeciążenie kodeka audio
+Недостатньо місця для продовження запису	Not enough storage to continue recording	Za mało miejsca, aby kontynuować nagrywanie
+Помилка запису або збереження файла	File writing or saving error	Błąd zapisu lub zapisywania pliku
+Аудіодвигун не передає нові дані	The audio engine is not delivering new data	Silnik audio nie dostarcza nowych danych
+Невизначена помилка запису	Unclassified recording error	Niesklasyfikowany błąd nagrywania

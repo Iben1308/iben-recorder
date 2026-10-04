@@ -32,7 +32,7 @@ final class SettingsPanel {
     private final Switch[] days = new Switch[7];
     private final int[] from = new int[7], to = new int[7];
     private final Button[] fromButtons = new Button[7], toButtons = new Button[7];
-    private final TextView scheduleStatus, cloudStatus;
+    private final TextView scheduleStatus, cloudStatus, bluetoothFormat;
     private final List<View> recordingControls = new ArrayList<>();
     private final List<Integer> sourceIds = new ArrayList<>();
     private List<AudioInputs.Choice> inputs;
@@ -75,10 +75,11 @@ final class SettingsPanel {
         bitrate = ui.spinner(audio, bitrates, draft == null ? find(bitrates, String.valueOf(config.bitrate())) : draft.getInt("draft_bitrate", 2));
         ui.text(audio, I18n.s("sample_rate"), 13, ui.muted);
         rate = ui.spinner(audio, new String[]{"44100", "48000"}, draft == null ? (config.sampleRate() == 48000 ? 1 : 0) : draft.getInt("draft_rate", 0));
-        ui.helpLabel(audio, I18n.s("input_device"), I18n.s("input_hint"));
+        ui.helpLabel(audio, I18n.s("input_device"), I18n.s("input_hint")+"\n\n"+I18n.s("bluetooth_hint"));
         device = ui.spinner(audio, new String[]{I18n.s("input_auto")}, 0);
         refillInputs(draft == null ? config.input() : draft.getString("draft_input", config.input()));
-        Button detect = ui.button(audio, I18n.s("refresh_inputs"), () -> refillInputs(selectedInput()), false);
+        bluetoothFormat=ui.text(audio,"",12,ui.muted);
+        Button detect = ui.button(audio, I18n.s("refresh_inputs"), () -> activity.bluetoothPermission(() -> refillInputs(selectedInput())), false);
         ui.text(audio, I18n.s("source_mode"), 13, ui.muted);
         List<String> sourceLabels = new ArrayList<>();
         addSource(sourceLabels, MediaRecorder.AudioSource.MIC, "source_mic");
@@ -167,7 +168,8 @@ final class SettingsPanel {
             ScrollView scroll = new ScrollView(activity); scroll.addView(text);
             new AlertDialog.Builder(activity).setTitle(I18n.s("log")).setView(scroll).setPositiveButton(I18n.s("close"), null).show();
         }, false);
-        ui.text(system, "Iben Recorder · 0.7.2 · Android 8.1+", 12, ui.muted);
+        ui.text(system, "Iben Recorder · 0.7.3 · Android 8.1+", 12, ui.muted);
+        device.setOnItemSelectedListener(selection(p -> refresh()));
         showSection(draft == null ? config.prefs.getInt("settings_section", 0) : draft.getInt("draft_section", 0)); refresh();
     }
     private interface Selected { void value(int position); }
@@ -235,6 +237,10 @@ final class SettingsPanel {
         boolean stale = System.currentTimeMillis() - config.prefs.getLong("heartbeat", 0) > 90000;
         boolean running = config.wanted() || (config.prefs.getBoolean("engine_active", false) && !stale);
         for (View control : recordingControls) control.setEnabled(!running);
+        boolean wireless=AudioInputPolicy.bluetooth(selectedInput());
+        source.setEnabled(!running && !wireless);rate.setEnabled(!running && !wireless);bitrate.setEnabled(!running && !wireless);
+        bluetoothFormat.setVisibility(wireless ? View.VISIBLE : View.GONE);
+        if(wireless)bluetoothFormat.setText(I18n.s("bluetooth_format",AudioInputPolicy.sampleRate(android.os.Build.VERSION.SDK_INT,selectedInput(),config.sampleRate())));
         WeeklySchedule.State state = ScheduleManager.state(config);
         String text = I18n.s("schedule_off");
         if (config.scheduleEnabled()) {

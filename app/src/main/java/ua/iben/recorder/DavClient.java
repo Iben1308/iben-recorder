@@ -10,7 +10,6 @@ import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.util.Base64;
 import java.util.UUID;
 import java.util.function.BooleanSupplier;
@@ -19,7 +18,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
-/** WebDAV with content-verified uploads and explicitly requested, metadata-checked deletion.
+/** WebDAV with metadata-confirmed uploads and explicitly requested, metadata-checked deletion.
  * Production connections retain system certificate/hostname checks and reject redirects.
  */
 public final class DavClient implements AutoCloseable {
@@ -33,8 +32,12 @@ public final class DavClient implements AutoCloseable {
         public final long modified;
         public final String sha256;
         public final String etag;
+        public final int kind;
         Receipt(long size, long modified, String sha256, String etag) {
-            this.size = size; this.modified = modified; this.sha256 = sha256; this.etag = etag;
+            this(size,modified,sha256,etag,TransferPolicy.CONTENT);
+        }
+        Receipt(long size,long modified,String sha256,String etag,int kind) {
+            this.size=size;this.modified=modified;this.sha256=sha256;this.etag=etag;this.kind=kind;
         }
     }
     private static final ScheduledExecutorService DEADLINES = Executors.newSingleThreadScheduledExecutor(r -> {
@@ -91,7 +94,7 @@ public final class DavClient implements AutoCloseable {
         c.setRequestProperty("X-Requested-With", "XMLHttpRequest");
         c.setRequestProperty("Accept-Encoding", "identity");
         c.setRequestProperty("Cache-Control", "no-cache, no-store");
-        c.setRequestProperty("User-Agent", "IbenRecorder/0.7.2");
+        c.setRequestProperty("User-Agent", "IbenRecorder/0.7.3");
         // HttpsURLConnection lacks a write timeout. Bound the whole request as well.
         deadline = DEADLINES.schedule(c::disconnect, 9, TimeUnit.MINUTES);
         check();
@@ -119,59 +122,31 @@ public final class DavClient implements AutoCloseable {
         }
         return new IOException(why + " (HTTP " + code + ")");
     }
-    private MessageDigest digest() {
-        try { return MessageDigest.getInstance("SHA-256"); }
-        catch (java.security.NoSuchAlgorithmException e) { throw new IllegalStateException(e); }
-    }
-    private String localHash(File file, long expected) throws IOException {
-        MessageDigest hash = digest();
-        long count = 0;
-        byte[] buffer = new byte[65536];
-        try (InputStream in = new BufferedInputStream(new FileInputStream(file))) {
-            int n;
-            while ((n = in.read(buffer)) != -1) {
-                check(); count += n; hash.update(buffer, 0, n);
-                if (count > expected) throw new IOException("Локальний файл змінився");
-                progress.update("Підготовка", count, expected);
-            }
-        }
-        if (count != expected) throw new IOException("Локальний файл змінився");
-        return DavTarget.hex(hash.digest());
-    }
-    /** Returns null for 404, a real content receipt for an identical complete remote file. */
-    private Receipt verify(String name, long size, long modified, String hash) throws IOException {
-        HttpURLConnection c = null;
+    /** The caller owns the saved name. No audio body is downloaded or hashed.
+     * Same-name/same-size replacements cannot be distinguished by this policy. */
+    private Receipt verify(String name, long size, long modified) throws IOException {
+        HttpURLConnection c=null;
         try {
-            c = begin("GET", name);
-            int code = c.getResponseCode();
-            if (code == 404) return null;
-            if (code != 200) throw response(code);
-            long length = c.getContentLengthLong();
-            if (length >= 0 && length != size) throw new Conflict();
-            MessageDigest actual = digest();
-            long count = 0;
-            byte[] buffer = new byte[65536];
-            try (InputStream in = new BufferedInputStream(c.getInputStream())) {
-                int n;
-                while ((n = in.read(buffer)) != -1) {
-                    check(); count += n;
-                    if (count > size) throw new Conflict();
-                    actual.update(buffer, 0, n);
-                    progress.update("Перевірка SHA-256", count, size);
-                }
-            }
-            if (count != size || !hash.equals(DavTarget.hex(actual.digest()))) throw new Conflict();
-            return new Receipt(size, modified, hash, c.getHeaderField("ETag"));
-        } finally { end(c); }
+            progress.update(I18n.uk("upload_check_metadata"),0,0);
+            c=begin("HEAD",name);int code=c.getResponseCode();
+            if(code==404)return null;
+            if(code==405 || code==501)throw new IOException(I18n.s("upload_head_required"));
+            if(code!=200)throw response(code);
+            long length=c.getContentLengthLong();
+            if(length<0)throw new IOException(I18n.s("upload_metadata_missing"));
+            if(length!=size)throw new Conflict();
+            String etag=c.getHeaderField("ETag");
+            if(!TransferPolicy.strongEtag(etag))throw new IOException(I18n.s("upload_metadata_missing"));
+            return new Receipt(size,modified,null,etag,TransferPolicy.METADATA);
+        } finally {end(c);}
     }
     public Receipt upload(File file, String remoteName) throws IOException {
         check();
         long size = file.length(); long modified = file.lastModified();
         if (!file.isFile() || size <= 0) throw new IOException("Готовий локальний файл недоступний");
-        String hash = localHash(file, size);
         unchanged(file, size, modified);
         // Covers a lost PUT response or a crash before recording the receipt: no second PUT.
-        Receipt receipt = verify(remoteName, size, modified, hash);
+        Receipt receipt = verify(remoteName, size, modified);
         if (receipt == null) {
             HttpURLConnection c = null;
             try {
@@ -189,10 +164,10 @@ public final class DavClient implements AutoCloseable {
                     }
                 }
                 int code = c.getResponseCode();
-                // Another attempt may have completed after the initial GET: verify instead of overwrite.
+                // Another attempt may have completed after the initial HEAD: verify instead of overwrite.
                 if (code != 201 && code != 204 && code != 412) throw response(code);
             } finally { end(c); }
-            receipt = verify(remoteName, size, modified, hash);
+            receipt = verify(remoteName, size, modified);
             if (receipt == null) throw new IOException("Після передачі файл відсутній на сервері");
         }
         check(); unchanged(file, size, modified);
@@ -243,13 +218,7 @@ public final class DavClient implements AutoCloseable {
             return etag;
         } finally { end(c); }
     }
-    private static boolean strongEtag(String etag) {
-        if (etag == null || etag.length() < 2 || etag.charAt(0) != '"' || etag.charAt(etag.length()-1) != '"') return false;
-        for (int i=1;i<etag.length()-1;i++) {
-            char c=etag.charAt(i); if (c=='"' || c<0x21 || c==0x7f) return false;
-        }
-        return true;
-    }
+    private static boolean strongEtag(String etag) { return TransferPolicy.strongEtag(etag); }
     private static void unchanged(File file, long size, long modified) throws IOException {
         if (!file.isFile() || file.length() != size || file.lastModified() != modified)
             throw new IOException("Локальний файл змінився; підтвердження не збережено");

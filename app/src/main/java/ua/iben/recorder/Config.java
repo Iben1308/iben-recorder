@@ -28,6 +28,8 @@ final class Config {
     int minutes() { return prefs.getInt("minutes", 60); }
     int bitrate() { return prefs.getInt("bitrate", 128); }
     int sampleRate() { return prefs.getInt("sample_rate", 44100); }
+    int captureRate() {return AudioInputPolicy.sampleRate(android.os.Build.VERSION.SDK_INT,input(),sampleRate());}
+    int captureBitrate() {return AudioInputPolicy.bitrate(input(),bitrate());}
     int gainDb() { return Math.max(0, Math.min(24, prefs.getInt("gain_db", 0))); }
     void gainDb(int db) { prefs.edit().putInt("gain_db", Math.max(0, Math.min(24, db))).apply(); }
     int theme() { return Math.max(0, Math.min(2, prefs.getInt("theme", 0))); }

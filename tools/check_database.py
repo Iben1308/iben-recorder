@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Execute RecordIndex's actual SQL on SQLite: every previous schema -> v5.
+"""Execute RecordIndex's actual SQL on SQLite: every previous schema -> v6.
 
 This checks migration/data semantics, not the Android SQLiteOpenHelper runtime.
 """
@@ -27,11 +27,11 @@ def statements(method_body):
 create_body = body('onCreate')
 groups = {1: statements(create_body)}
 upgrade_calls = re.findall(r'if \(oldVersion < (\d)\) (\w+)\(db\);', body('onUpgrade'))
-assert [int(version) for version, _ in upgrade_calls] == [2, 3, 4, 5]
+assert [int(version) for version, _ in upgrade_calls] == [2, 3, 4, 5, 6]
 for version, method in upgrade_calls:
     groups[int(version)] = statements(body(method))
 assert re.findall(r'\b(add\w+)\(db\);', create_body) == [method for _, method in upgrade_calls]
-assert '"recordings.db", null, 5' in source
+assert '"recordings.db", null, 6' in source
 
 
 def schema(db, start, end):
@@ -50,7 +50,7 @@ def seed(db, version):
                    (f'record-{index}', 100 + index, 'Europe/Kyiv', 60000, f'file-{index}.m4a', state))
     if version >= 2:
         db.execute("UPDATE records SET verified_target='account-a',verified_size=4096,verified_modified=123,"
-                   "verified_hash='sha256',remote_name='alternate-name.m4a' WHERE id='record-2'")
+                   "verified_hash='aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',remote_name='alternate-name.m4a' WHERE id='record-2'")
     if version >= 3:
         db.execute("UPDATE records SET playback_ms=15000,listened=1,heard_ranges='0:15000' WHERE id='record-2'")
     if version >= 4:
@@ -59,19 +59,25 @@ def seed(db, version):
 
 
 with tempfile.TemporaryDirectory(prefix='iben-schema-') as directory:
-    for version in [1, 2, 3, 4]:
+    for version in [1, 2, 3, 4, 5]:
         path = Path(directory) / f'v{version}.db'
         with sqlite3.connect(path) as db:
             schema(db, 1, version)
             seed(db, version)
+            if version >= 5:
+                db.execute("UPDATE records SET important=1 WHERE id='record-1'")
+                db.execute("INSERT INTO bookmarks(id,record_id,position_ms,label) VALUES('legacy','record-1',123,'Старе')")
             old_columns = ','.join(columns(db))
             old_records = db.execute(f'SELECT {old_columns} FROM records ORDER BY id').fetchall()
             old_deletions = db.execute('SELECT * FROM cloud_deletions ORDER BY target').fetchall() if version >= 4 else []
-            schema(db, version + 1, 5)
+            schema(db, version + 1, 6)
             assert db.execute(f'SELECT {old_columns} FROM records ORDER BY id').fetchall() == old_records
             assert db.execute('SELECT * FROM cloud_deletions ORDER BY target').fetchall() == old_deletions
-            assert db.execute('SELECT important FROM records').fetchall() == [(0,)] * 4
-            assert db.execute('SELECT COUNT(*) FROM bookmarks').fetchone() == (0,)
+            assert db.execute('SELECT important FROM records ORDER BY id').fetchall() == ([(0,), (1,), (0,), (0,)] if version == 5 else [(0,)]*4)
+            assert db.execute('SELECT COUNT(*) FROM bookmarks').fetchone() == (1 if version == 5 else 0,)
+            assert db.execute('SELECT receipt_kind FROM records ORDER BY id').fetchall() == ([(0,), (0,), (1,), (0,)] if version >= 2 else [(0,)]*4)
+            assert db.execute('SELECT verified_etag FROM records').fetchall() == [(None,)]*4
+            db.execute("UPDATE records SET receipt_kind=2,verified_target='account-a',verified_size=8192,verified_modified=456,verified_hash=NULL,verified_etag='\"opaque-version\"' WHERE id='record-3'")
             if version == 1:
                 assert db.execute('SELECT verified_target,verified_size,verified_hash FROM records WHERE id=?',
                                   ('record-2',)).fetchone() == (None, -1, None)
@@ -83,6 +89,9 @@ with tempfile.TemporaryDirectory(prefix='iben-schema-') as directory:
                 ('active', 'record-0', 4000, 'Під час запису')])
         with sqlite3.connect(path) as reopened:
             assert reopened.execute('PRAGMA integrity_check').fetchone() == ('ok',)
+            assert reopened.execute("SELECT receipt_kind,verified_hash,verified_etag FROM records WHERE id='record-3'").fetchone() == (2,None,'"opaque-version"')
+            if version == 5:
+                assert reopened.execute("SELECT label FROM bookmarks WHERE id='legacy'").fetchone() == ('Старе',)
             assert reopened.execute("SELECT important FROM records WHERE id='record-2'").fetchone() == (1,)
             assert reopened.execute("SELECT id FROM bookmarks WHERE record_id='record-2' ORDER BY position_ms,id").fetchall() == [
                 ('earlier',), ('same-time',), ('later',)]
@@ -93,12 +102,12 @@ with tempfile.TemporaryDirectory(prefix='iben-schema-') as directory:
                 for table in ['bookmarks', 'cloud_deletions']:
                     reopened.execute(f'DELETE FROM {table} WHERE record_id=?', ('record-2',))
                 reopened.execute('DELETE FROM records WHERE id=?', ('record-2',))
-            assert reopened.execute('SELECT id FROM bookmarks').fetchall() == [('active',)]
+            assert reopened.execute('SELECT id FROM bookmarks ORDER BY id').fetchall() == ([('active',), ('legacy',)] if version == 5 else [('active',)])
             assert reopened.execute('SELECT COUNT(*) FROM records').fetchone() == (3,)
 
     with sqlite3.connect(':memory:') as fresh:
-        schema(fresh, 1, 5)
-        assert columns(fresh)[-1] == 'important'
+        schema(fresh, 1, 6)
+        assert columns(fresh)[-2:] == ['receipt_kind', 'verified_etag']
         assert len(list(fresh.execute('PRAGMA table_info(bookmarks)'))) == 4
 
-print('PASS: SQLite v1/v2/v3/v4 -> v5 preserves all old rows, receipts, playback and per-target deletion state; important/bookmarks persist after reopen')
+print('PASS: SQLite v1/v2/v3/v4/v5 -> v6 preserves rows, content receipts, playback, deletion state and bookmarks; metadata receipts remain distinct after reopen')

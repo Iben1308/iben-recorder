@@ -76,6 +76,15 @@ public final class WebDavTest {
         check(!TransferPolicy.verified(t.key,t.key,101,100,20,20,hash), "Changed length invalidates receipt");
         check(!TransferPolicy.verified(t.key,t.key,100,100,21,20,hash), "Changed local timestamp invalidates receipt");
         check(!TransferPolicy.verified(t.key,t.key,100,100,20,20,null), "A size-only response is insufficient");
+        check(TransferPolicy.confirmed(t.key,t.key,100,100,20,20,null,TransferPolicy.METADATA,"\"version\""),
+                "Metadata receipt accepts matching identity and a strong ETag without inventing a hash");
+        for(String etag:new String[]{null,"","W/\"weak\"","unquoted","\"bad\"quote\"","\"bad\nvalue\""})
+            check(!TransferPolicy.confirmed(t.key,t.key,100,100,20,20,null,TransferPolicy.METADATA,etag),"Invalid ETag cannot authorize cleanup");
+        check(!TransferPolicy.confirmed(t.key,"other",100,100,20,20,null,TransferPolicy.METADATA,"\"v\""),"Metadata receipt binds destination");
+        check(!TransferPolicy.confirmed(t.key,t.key,101,100,20,20,null,TransferPolicy.METADATA,"\"v\""),"Metadata receipt binds size");
+        check(!TransferPolicy.confirmed(t.key,t.key,100,100,21,20,null,TransferPolicy.METADATA,"\"v\""),"Metadata receipt binds local modification time");
+        for(int kind:new int[]{TransferPolicy.NONE,99})
+            check(!TransferPolicy.confirmed(t.key,t.key,100,100,20,20,hash,kind,"\"v\""),"Unknown/unconfirmed receipt kind protects local file");
         check(TransferPolicy.retryDelay(1)==30000L && TransferPolicy.retryDelay(2)==120000L
                 && TransferPolicy.retryDelay(3)==600000L && TransferPolicy.retryDelay(20)==1800000L, "Retry backoff is bounded");
     }
@@ -95,7 +104,9 @@ public final class WebDavTest {
             String name=source.getName();
             DavClient.Receipt receipt;
             try (DavClient c=client(QUIET)) { receipt=c.upload(source,name); }
-            check(receipt.size==bytes.length && receipt.sha256.equals(hash(bytes)), "Full remote SHA-256 matches local bytes");
+            check(receipt.size==bytes.length && receipt.modified==source.lastModified()
+                    && receipt.sha256==null && receipt.kind==TransferPolicy.METADATA && TransferPolicy.strongEtag(receipt.etag),
+                    "HEAD confirms metadata and never claims full content verification");
             check(Arrays.equals(remote.get(ROOT+name),bytes), "Complete source uploaded");
             check(puts.get()==1 && deletes.get()==0, "First upload creates once and deletes no recording");
             try (DavClient c=client(QUIET)) { c.upload(source,name); }
@@ -110,16 +121,20 @@ public final class WebDavTest {
             int afterLost=puts.get();
             try(DavClient c=client(QUIET)){c.upload(source,uncertain);}
             check(puts.get()==afterLost, "Retry after lost successful PUT response verifies instead of duplicating");
-            byte[] other=bytes.clone(); other[12]^=1;
+            byte[] other=Arrays.copyOf(bytes,bytes.length+1);
             remote.put(ROOT+"collision.m4a",other);
             int before=puts.get();
             expectFailure(() -> {try(DavClient c=client(QUIET)){c.upload(source,"collision.m4a");}},DavClient.Conflict.class);
-            check(puts.get()==before && Arrays.equals(remote.get(ROOT+"collision.m4a"),other), "Same-size different-content collision is never overwritten");
+            check(puts.get()==before && Arrays.equals(remote.get(ROOT+"collision.m4a"),other), "Different-size collision is never overwritten");
+            byte[] sameSize=bytes.clone();sameSize[12]^=1;remote.put(ROOT+"same-size.m4a",sameSize);
+            try(DavClient c=client(QUIET)){receipt=c.upload(source,"same-size.m4a");}
+            check(receipt.kind==TransferPolicy.METADATA && receipt.sha256==null && puts.get()==before,
+                    "Same-name/same-size replacement is an explicit limitation of metadata verification");
             try(DavClient c=client(QUIET)){c.upload(source,"collision_unique-id.m4a");}
             check(Arrays.equals(remote.get(ROOT+"collision_unique-id.m4a"),bytes), "An alternate name preserves both files");
             race=true;
             try(DavClient c=client(QUIET)){c.upload(source,"race.m4a");}
-            check(Arrays.equals(remote.get(ROOT+"race.m4a"),bytes), "412 race is resolved by content verification");
+            check(Arrays.equals(remote.get(ROOT+"race.m4a"),bytes), "412 race is resolved by metadata without overwriting");
             for(int code:new int[]{401,403,409,413,423,429,500,507}) {
                 putStatus=code;
                 expectFailure(() -> {try(DavClient c=client(QUIET)){c.upload(source,"rejected-"+code+".m4a");}},IOException.class);
@@ -129,23 +144,54 @@ public final class WebDavTest {
             redirect=true;
             expectFailure(() -> {try(DavClient c=client(QUIET)){c.upload(source,"redirect.m4a");}},IOException.class);
             check(leaks.get()==0, "Redirect was not followed and Authorization was not forwarded");
-            redirect=false; corrupt=true;
-            expectFailure(() -> {try(DavClient c=client(QUIET)){c.upload(source,name);}},DavClient.Conflict.class);
-            corrupt=false;
+            redirect=false;
+            uploadMetadataCases(source);
             try(DavClient c=client(QUIET)) { c.cancel(); expectFailure(() -> c.upload(source,name), InterruptedIOException.class); }
             final DavClient[] active=new DavClient[1];
-            active[0]=client((phase,done,total)->{if(phase.equals("Перевірка SHA-256")&&done>0) active[0].cancel();});
+            active[0]=client((phase,done,total)->{if(phase.equals(I18n.uk("upload_check_metadata"))) active[0].cancel();});
             try(DavClient c=active[0]) {expectFailure(() -> c.upload(source,name), IOException.class);}
             int count=remote.size();
             try(DavClient c=client(QUIET)) { c.test(directory); }
             check(remote.size()==count && deletes.get()==1, "Connection probe creates and removes only its own test file");
             deletionCases(source, bytes);
+            check(gets.get()==0 && audioResponseBytes.get()==0,"All upload, retry, probe and delete paths download zero audio bytes");
             check(source.isFile() && Arrays.equals(Files.readAllBytes(source.toPath()),bytes), "All paths leave the local recording intact");
         } finally {
             server.stop(0); executor.shutdownNow();
             for(File f:directory.listFiles()) if(!f.delete()) throw new IOException("Test cleanup failed");
             if(!directory.delete()) throw new IOException("Test directory cleanup failed");
         }
+    }
+    private void uploadMetadataCases(File source) throws Exception {
+        String name=source.getName();int before=puts.get();
+        for(int mode=0;mode<4;mode++) {
+            weakEtag=mode==0;noEtag=mode==1;noLength=mode==2;invalidEtag=mode==3 ? "unquoted" : null;
+            expectFailure(() -> {try(DavClient c=client(QUIET)){c.upload(source,name);}},IOException.class);
+            check(puts.get()==before && source.isFile(),"Incomplete metadata produces no receipt and does not re-upload or delete");
+        }
+        weakEtag=false;noEtag=false;noLength=false;invalidEtag=null;
+        for(int status:new int[]{401,403,405,429,500,501,507}) {
+            headStatus=status;
+            expectFailure(() -> {try(DavClient c=client(QUIET)){c.upload(source,name);}},IOException.class);
+            check(puts.get()==before,"Failed HEAD never falls back to GET or unconditional PUT");
+        }
+        headStatus=0;
+        File changing=new File(source.getParentFile(),"changing.m4a");Files.copy(source.toPath(),changing.toPath());
+        long oldModified=changing.lastModified();AtomicInteger phaseCount=new AtomicInteger();
+        try(DavClient c=client((phase,done,total) -> {
+            if(phase.equals(I18n.uk("upload_check_metadata")) && phaseCount.incrementAndGet()==2)
+                check(changing.setLastModified(oldModified+2000),"Fixture changes local modification time");
+        })) {expectFailure(() -> c.upload(changing,changing.getName()),IOException.class);}
+        check(changing.isFile(),"Mutation during transfer leaves local source without a receipt");
+        check(changing.delete(),"Fixture cleanup");
+        final DavClient[] cancel=new DavClient[1];AtomicInteger metadata=new AtomicInteger();
+        cancel[0]=client((phase,done,total) -> {
+            if(phase.equals(I18n.uk("upload_check_metadata")) && metadata.incrementAndGet()==2)cancel[0].cancel();
+        });
+        try(DavClient c=cancel[0]) {expectFailure(() -> c.upload(source,"cancel-after-put.m4a"),InterruptedIOException.class);}
+        int afterCancel=puts.get();
+        try(DavClient c=client(QUIET)){c.upload(source,"cancel-after-put.m4a");}
+        check(puts.get()==afterCancel,"Retry after cancellation following PUT confirms with HEAD without uploading again");
     }
     private void deletionCases(File source, byte[] bytes) throws Exception {
         String name = "delete-one.m4a", path = ROOT + name;

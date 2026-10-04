@@ -50,6 +50,22 @@ public final class RecorderService extends Service {
     private volatile ContinuousRecorder recorder;
     private volatile boolean destroying;
     private int retryCount;
+    private RecordingFailure.Reason waitingReason;
+    private long retryAt,lastDeviceRetry,gapSince,healthSince;
+    private boolean awaitingCorrection;
+    private int previousHealth;
+    private android.media.AudioDeviceCallback devices;
+    private android.content.BroadcastReceiver bluetoothEvents;
+    static boolean retryNow() {
+        RecorderService current=instance;
+        if(current==null || current.destroying || current.worker==null)return false;
+        current.worker.post(() -> {
+            if(current.recorder!=null || !current.config.wanted())return;
+            current.awaitingCorrection=false;current.retryAt=0;current.retryCount=0;
+            current.worker.removeCallbacks(current.retry);current.applyDesired();
+        });return true;
+    }
+
     private int latestStartId;
     private long stableSince;
     private long lastStats;
@@ -67,7 +83,8 @@ public final class RecorderService extends Service {
         worker = new Handler(thread.getLooper());
         wakeLock = getSystemService(PowerManager.class).newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "IbenRecorder:recording");
         wakeLock.setReferenceCounted(false);
-        config.prefs.edit().putBoolean("engine_active", false).apply();
+        gapSince=config.prefs.getLong("record_gap_since",0);
+        config.prefs.edit().putBoolean("engine_active", false).putInt("capture_health",CaptureHealth.NORMAL).apply();
         try {
             if (!permissionsGranted()) throw new SecurityException("Recording permission missing");
             if (Build.VERSION.SDK_INT >= 30) startForeground(NOTIFICATION, notification("Підготовка…"),
@@ -75,6 +92,7 @@ public final class RecorderService extends Service {
             else startForeground(NOTIFICATION, notification("Підготовка…"));
             foregroundStarted = true; instance = this;
             ScheduleManager.clearReminder(this);
+            observeInputs();
         } catch (RuntimeException e) {
             AppLog.write(this, "Foreground service: " + e.getClass().getSimpleName());
             ScheduleManager.awaitingUser(this);
@@ -95,19 +113,21 @@ public final class RecorderService extends Service {
         if (destroying) return;
         if (!permissionsGranted()) {
             config.wanted(false);
-            if (recorder != null) recorder.abort(I18n.uk("record_permission"));
+            if (recorder != null) recorder.abort(RecordingFailure.Reason.PERMISSION);
             else finishStopped(I18n.uk("record_permission"));
             return;
         }
         if (!config.wanted()) {
+            awaitingCorrection=false;retryAt=0;waitingReason=null;retryCount=0;
             worker.removeCallbacks(retry);
             if (recorder != null) { report("Завершення й збереження запису…", 0); recorder.stop(); }
             else finishStopped("Запис зупинено");
             return;
         }
         worker.removeCallbacks(standbyTick);
+        if(awaitingCorrection && recorder==null)return;
         if (!wakeLock.isHeld()) wakeLock.acquire();
-        if (recorder == null) { worker.removeCallbacks(retry); begin(); }
+        if (recorder == null && !awaitingCorrection && SystemClock.elapsedRealtime()>=retryAt) { worker.removeCallbacks(retry); begin(); }
     }
     private boolean permissionsGranted() { return Platform.recordingGranted(this); }
     private final Runnable standbyTick = new Runnable() {
@@ -137,6 +157,13 @@ public final class RecorderService extends Service {
     private void ended(ContinuousRecorder ended, Throwable error) {
         if (recorder != ended) return;
         recorder = null;
+        if(error!=null && config.wanted() && gapSince==0)
+            gapSince=ended.failureAt()>0 ? ended.failureAt() : System.currentTimeMillis();
+        if(previousHealth!=CaptureHealth.NORMAL) {
+            if(healthSince>0)AppLog.write(this,I18n.s("capture_interval",Math.max(0,(System.currentTimeMillis()-healthSince)/1000)));
+            healthSince=0;previousHealth=CaptureHealth.NORMAL;
+            ProblemNotifications.captureState(this,CaptureHealth.NORMAL);
+        }
         worker.removeCallbacks(heartbeat);
         config.prefs.edit().putBoolean("engine_active", false).putInt("peak", 0).putInt("finishing", 0).apply();
         try { updateStats(); } catch (Exception ignored) { }
@@ -146,16 +173,73 @@ public final class RecorderService extends Service {
             if (error == null) begin(); else scheduleRetry(error);
         } else finishStopped(error == null ? "Запис зупинено; файли збережено" : "Запис зупинено з помилкою: " + message(error));
     }
-    private final Runnable retry = this::begin;
+    private final Runnable retry = () -> {retryAt=0;applyDesired();};
     private void scheduleRetry(Throwable error) {
+        RecordingFailure.Reason reason=RecordingFailure.classify(error);
+        if(reason!=waitingReason)retryCount=0;
+        waitingReason=reason;
         ProblemNotifications.recordingFailure(this,error);
-        config.prefs.edit().putBoolean("engine_active", false).apply();
         if (destroying || !config.wanted()) { finishStopped(message(error)); return; }
-        long delay = retryCount == 0 ? 5000L : retryCount == 1 ? 15000L : 60000L;
-        retryCount = Math.min(2, retryCount + 1);
-        AppLog.write(this, message(error) + "; повтор через " + delay / 1000L + " с");
-        report(message(error) + ". Повтор через " + delay / 1000L + " с", 0);
-        worker.removeCallbacks(retry); worker.postDelayed(retry, delay);
+        long delay=RecordingFailure.retryDelay(reason,retryCount);
+        retryCount=Math.min(10,retryCount+1);awaitingCorrection=delay<0;
+        if(gapSince==0)gapSince=System.currentTimeMillis();
+        config.prefs.edit().putBoolean("engine_active",false).putInt("capture_health",CaptureHealth.NORMAL)
+                .putString("record_failure",reason.name()).putLong("record_gap_since",gapSince)
+                .putLong("record_retry_at",delay<0 ? 0 : System.currentTimeMillis()+delay).apply();
+        String detail=I18n.uk(RecordingFailure.key(reason));
+        AppLog.write(this,"Recording ["+reason.name()+"] "+message(error));
+        report(detail+(delay<0 ? "\n"+I18n.uk("recovery_user_action") : ". Повтор через "+delay/1000+" с"),0);
+        worker.removeCallbacks(retry);
+        if(delay<0) {retryAt=Long.MAX_VALUE;releaseResources();}
+        else {retryAt=SystemClock.elapsedRealtime()+delay;worker.postDelayed(retry,delay);}
+    }
+    private void observeInputs() {
+        android.media.AudioManager manager=getSystemService(android.media.AudioManager.class);
+        devices=new android.media.AudioDeviceCallback() {
+            @Override public void onAudioDevicesAdded(android.media.AudioDeviceInfo[] added) {
+                for(android.media.AudioDeviceInfo device:added) {
+                    if(AudioInputPolicy.bluetooth(config.input()) ? BluetoothRoute.type(device.getType()) : AudioInputs.key(device).equals(config.input())) {
+                        inputReturned();break;
+                    }
+                }
+            }
+        };
+        manager.registerAudioDeviceCallback(devices,worker);
+        bluetoothEvents=new android.content.BroadcastReceiver() {
+            @Override public void onReceive(android.content.Context context,Intent intent) {
+                if(!AudioInputPolicy.bluetooth(config.input()))return;
+                boolean connected=android.bluetooth.BluetoothHeadset.ACTION_CONNECTION_STATE_CHANGED.equals(intent.getAction())
+                        && intent.getIntExtra(android.bluetooth.BluetoothProfile.EXTRA_STATE,-1)==android.bluetooth.BluetoothProfile.STATE_CONNECTED;
+                boolean enabled=android.bluetooth.BluetoothAdapter.ACTION_STATE_CHANGED.equals(intent.getAction())
+                        && intent.getIntExtra(android.bluetooth.BluetoothAdapter.EXTRA_STATE,-1)==android.bluetooth.BluetoothAdapter.STATE_ON;
+                if(connected || enabled)worker.post(() -> inputReturned());
+            }
+        };
+        android.content.IntentFilter filter=new android.content.IntentFilter(android.bluetooth.BluetoothHeadset.ACTION_CONNECTION_STATE_CHANGED);
+        filter.addAction(android.bluetooth.BluetoothAdapter.ACTION_STATE_CHANGED);
+        if(Build.VERSION.SDK_INT>=33)registerReceiver(bluetoothEvents,filter,android.content.Context.RECEIVER_EXPORTED);
+        else registerReceiver(bluetoothEvents,filter);
+    }
+    private void inputReturned() {
+        if(destroying || recorder!=null || !config.wanted() || (waitingReason!=RecordingFailure.Reason.INPUT_UNAVAILABLE && waitingReason!=RecordingFailure.Reason.INPUT_BUSY))return;
+        long now=SystemClock.elapsedRealtime();if(now-lastDeviceRetry<1000)return;lastDeviceRetry=now;
+        retryAt=0;worker.removeCallbacks(retry);applyDesired();
+    }
+    private void captureState(ContinuousRecorder current,int health) {
+        if(health!=previousHealth) {
+            if(previousHealth!=CaptureHealth.NORMAL && healthSince>0)
+                AppLog.write(this,I18n.s("capture_interval",(System.currentTimeMillis()-healthSince)/1000));
+            healthSince=health==CaptureHealth.NORMAL ? 0 : System.currentTimeMillis();
+            AppLog.write(this,I18n.s(health==CaptureHealth.SYSTEM_SILENCED ? "capture_system_silenced" : health==CaptureHealth.ZERO_SIGNAL ? "capture_zero_signal" : "capture_restored"));
+            previousHealth=health;ProblemNotifications.captureState(this,health);
+        }
+        if(current.capturing() && current.segmentStart()>0 && health==CaptureHealth.NORMAL && gapSince>0) {
+            AppLog.write(this,I18n.s("recording_gap_ended",Math.max(0,(System.currentTimeMillis()-gapSince)/1000)));
+            gapSince=0;config.prefs.edit().remove("record_gap_since").remove("record_failure").remove("record_retry_at").apply();
+            // Keep the last failure kind until five healthy minutes have elapsed.
+            // Brief recoveries must not reset backoff on a repeatedly failing input/codec.
+            awaitingCorrection=false;retryAt=0;
+        }
     }
     private final Runnable heartbeat = new Runnable() {
         @Override public void run() {
@@ -166,22 +250,28 @@ public final class RecorderService extends Service {
             ContinuousRecorder current = recorder;
             if (!config.wanted()) current.stop();
             long now = SystemClock.elapsedRealtime();
+            int health=current.captureHealth();captureState(current,health);
+            if(health!=CaptureHealth.NORMAL || !current.capturing())stableSince=now;
             if (current.recording() && config.wanted()
                     && (now - current.lastCapture() > 30000L || now - current.lastWrite() > 30000L))
-                current.abort("Немає нового аудіо понад 30 секунд");
-            if (!healthReported && current.recording() && now-stableSince>60000L && now-current.lastCapture()<5000L && now-current.lastWrite()<5000L) {
+                current.abort(RecordingFailure.Reason.STALLED);
+            if (!healthReported && health==CaptureHealth.NORMAL && current.capturing() && now-stableSince>60000L && now-current.lastCapture()<5000L && now-current.lastWrite()<5000L) {
                 ProblemNotifications.recordingHealthy(RecorderService.this); healthReported=true;
             }
-            if (now - stableSince > 300000L) retryCount = 0;
+            if (health==CaptureHealth.NORMAL && current.capturing() && now-stableSince>300000L) {
+                retryCount=0;waitingReason=null;
+            }
             try { if (now - lastStats >= 10000L) { updateStats(); lastStats = now; } }
-            catch (Exception e) { current.abort("Контроль пам’яті: " + message(e)); }
+            catch (Exception e) { current.abort(RecordingFailure.classify(e)==RecordingFailure.Reason.STORAGE_FULL ? RecordingFailure.Reason.STORAGE_FULL : RecordingFailure.Reason.STORAGE_IO); }
             config.prefs.edit().putLong("segment_ms", current.segmentMillis())
                     .putInt("peak", Math.round(current.peak() * 100))
                     .putFloat("peak_raw", current.peak())
                     .putBoolean("limiting", current.limitedFraction() > 0.01f)
-                    .putInt("finishing", current.finishing()).apply();
+                    .putInt("finishing", current.finishing()).putInt("capture_health",health).apply();
             String status = !config.wanted() ? "Завершення й збереження запису…"
-                    : current.recording() ? "Триває запис" : "Підготовка або завершення аудіодвигуна…";
+                    : health==CaptureHealth.SYSTEM_SILENCED ? I18n.uk("capture_system_silenced")
+                    : health==CaptureHealth.ZERO_SIGNAL ? I18n.uk("capture_zero_signal")
+                    : current.capturing() ? "Триває запис" : "Підготовка або завершення аудіодвигуна…";
             report(status, current.segmentStart());
             worker.postDelayed(this, 1000L);
         }
@@ -194,6 +284,9 @@ public final class RecorderService extends Service {
     private void finishStopped(String text) {
         worker.removeCallbacks(retry); worker.removeCallbacks(heartbeat); worker.removeCallbacks(standbyTick);
         config.prefs.edit().putBoolean("engine_active", false).putInt("peak", 0).putInt("finishing", 0).apply();
+        config.prefs.edit().remove("record_failure").remove("record_retry_at").remove("record_gap_since").putInt("capture_health",CaptureHealth.NORMAL).apply();
+        gapSince=0;waitingReason=null;awaitingCorrection=false;retryAt=0;previousHealth=CaptureHealth.NORMAL;
+        ProblemNotifications.captureState(this,CaptureHealth.NORMAL);
         config.status(text, 0); AppLog.write(this, text);
         releaseResources();
         if (!destroying && ScheduleManager.standby(config)) {
@@ -234,6 +327,8 @@ public final class RecorderService extends Service {
     }
     @Override public void onDestroy() {
         if (instance == this) instance = null;
+        if(devices!=null)getSystemService(android.media.AudioManager.class).unregisterAudioDeviceCallback(devices);
+        if(bluetoothEvents!=null)try{unregisterReceiver(bluetoothEvents);}catch(RuntimeException ignored){}
         if (worker != null) worker.post(() -> {
             destroying = true;
             worker.removeCallbacks(retry); worker.removeCallbacks(heartbeat); worker.removeCallbacks(standbyTick);

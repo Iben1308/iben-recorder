@@ -58,6 +58,8 @@ public final class TlsCertificateTest {
                 DavClient.Receipt receipt;
                 try(DavClient client=new DavClient(target,"password",QUIET,imported)) {receipt=client.upload(source,"recording.m4a");}
                 check(Arrays.equals(server.files.get("/records/recording.m4a"),bytes),"Pinned self-signed HTTPS uploads through production client");
+                check(receipt.kind==TransferPolicy.METADATA && receipt.sha256==null && TransferPolicy.strongEtag(receipt.etag),
+                        "Production HTTPS returns an explicitly metadata-only receipt");
                 int requests=server.requests.get();
                 fails(()->{try(DavClient client=new DavClient(target,"password",QUIET)){client.upload(source,"no-pin.m4a");}},"Default trust rejects self-signed server");
                 check(server.requests.get()==requests,"Failed default TLS sends no HTTP credentials");
